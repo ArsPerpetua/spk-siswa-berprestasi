@@ -53,8 +53,7 @@ class Paths
      * for maximum security, keeping it out of the app and/or
      * system directories.
      */
-    public string $writableDirectory = (getenv('VERCEL') ? sys_get_temp_dir() . '/writable' : __DIR__ . '/../../writable');
-
+    public string $writableDirectory = __DIR__ . '/../../writable';
 
     /**
      * ---------------------------------------------------------------

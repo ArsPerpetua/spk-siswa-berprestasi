@@ -1,15 +1,128 @@
 <?= $this->extend('layout/main') ?>
 
 <?= $this->section('content') ?>
+<?php
+$filter = $filter ?? ['kelas' => '', 'alternatif_ids' => [], 'limit_input' => ''];
+$kelas_options = $kelas_options ?? [];
+$alternatif_options = $alternatif_options ?? ($alternatif ?? []);
+$total_tersedia = $total_tersedia ?? count($alternatif_options);
+$total_terpilih = $total_terpilih ?? count($alternatif ?? []);
+$filter_query = $filter_query ?? [];
+$selected_siswa_count = count($filter['alternatif_ids'] ?? []);
+$active_filters = [];
+if (!empty($filter['kelas'])) {
+    $active_filters[] = 'Kelas: ' . $filter['kelas'];
+}
+if (!empty($filter['limit_input'])) {
+    $active_filters[] = 'Jumlah Data: ' . $filter['limit_input'];
+}
+if ($selected_siswa_count > 0) {
+    $active_filters[] = 'Siswa Spesifik: ' . $selected_siswa_count . ' siswa';
+}
+$pdfUrl = base_url('hitung/cetakPDF');
+if (!empty($filter_query)) {
+    $pdfUrl .= '?' . http_build_query($filter_query);
+}
+?>
 
 <div class="card shadow-sm">
     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-calculator me-2"></i> Detail Perhitungan & Hasil</h5>
-        <a href="<?= base_url('hitung/cetakPDF') ?>" target="_blank" class="btn btn-sm btn-light text-danger fw-bold">
+        <a href="<?= $pdfUrl ?>" target="_blank" class="btn btn-sm btn-light text-danger fw-bold">
             <i class="bi bi-file-earmark-pdf-fill me-2"></i> Download Laporan PDF
         </a>
     </div>
     <div class="card-body">
+        <div class="card border mb-3">
+            <div class="card-body">
+                <form method="get" action="<?= base_url('hitung') ?>" class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label mb-1">Filter Kelas</label>
+                        <select name="kelas" class="form-select form-select-sm">
+                            <option value="">Semua Kelas</option>
+                            <?php foreach ($kelas_options as $kelas): ?>
+                                <option value="<?= esc($kelas) ?>" <?= ($filter['kelas'] ?? '') === $kelas ? 'selected' : '' ?>>
+                                    <?= esc($kelas) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mb-1">Jumlah Data</label>
+                        <input type="number" min="1" name="limit" value="<?= esc($filter['limit_input'] ?? '') ?>"
+                            class="form-control form-control-sm" placeholder="Semua">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label mb-1">Pilih Siswa Spesifik (opsional)</label>
+                        <div class="dropdown w-100" data-bs-auto-close="outside">
+                            <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center"
+                                type="button" id="btnDropdownAlternatif" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span id="dropdownAlternatifLabel">Semua Siswa</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu p-2 w-100" style="min-width: 360px; max-width: 520px;">
+                                <input type="text" id="searchAlternatif" class="form-control form-control-sm mb-2"
+                                    placeholder="Cari NIS / nama siswa...">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnSelectAllAlt">Pilih terlihat</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearAllAlt">Kosongkan</button>
+                                </div>
+                                <div id="alternatifChecklist" class="border rounded p-2" style="max-height: 220px; overflow-y: auto;">
+                                    <?php foreach ($alternatif_options as $opt): ?>
+                                        <?php
+                                        $idAlt = (int) ($opt['id_alternatif'] ?? 0);
+                                        $isSelected = in_array($idAlt, $filter['alternatif_ids'] ?? [], true);
+                                        $nisAlt = (string) ($opt['nis'] ?? '-');
+                                        $namaAlt = (string) ($opt['nama_siswa'] ?? '-');
+                                        $kelasAlt = (string) ($opt['kelas'] ?? '-');
+                                        $labelAlt = strtolower($nisAlt . ' ' . $namaAlt . ' ' . $kelasAlt);
+                                        ?>
+                                        <div class="form-check alt-item mb-1" data-label="<?= esc($labelAlt, 'attr') ?>">
+                                            <input class="form-check-input alt-checkbox" type="checkbox" name="alternatif_ids[]"
+                                                value="<?= $idAlt ?>" id="alt_<?= $idAlt ?>" <?= $isSelected ? 'checked' : '' ?>>
+                                            <label class="form-check-label small" for="alt_<?= $idAlt ?>">
+                                                <span class="badge text-bg-light border me-1"><?= esc($nisAlt) ?></span>
+                                                <?= esc($namaAlt) ?>
+                                            </label>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <div id="emptyAlternatifState" class="text-center text-muted small py-2 d-none">
+                                        Tidak ada siswa sesuai pencarian.
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between mt-2">
+                                    <small class="text-muted">Ditampilkan: <span id="visibleAltCount">0</span></small>
+                                    <small class="text-muted">Terpilih: <span id="selectedAltCount">0</span></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-grid gap-2">
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="bi bi-funnel-fill me-1"></i> Terapkan
+                        </button>
+                        <a href="<?= base_url('hitung') ?>" class="btn btn-sm btn-outline-secondary">Reset</a>
+                    </div>
+                </form>
+                <small class="text-muted d-block mt-2">
+                    Data terhitung: <strong><?= $total_terpilih ?></strong> dari <strong><?= $total_tersedia ?></strong>
+                    siswa.
+                </small>
+                <div class="alert alert-light border mt-2 py-2 mb-0 small">
+                    <strong>Filter Aktif:</strong>
+                    <?php if (empty($active_filters)): ?>
+                        <span class="badge bg-secondary">Tanpa Filter (Semua Data)</span>
+                    <?php else: ?>
+                        <?php foreach ($active_filters as $item): ?>
+                            <span class="badge text-bg-primary"><?= esc($item) ?></span>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    <br>
+                    <span class="text-muted">Urutan penerapan: <strong>Kelas</strong> -> <strong>Siswa Spesifik</strong> ->
+                        <strong>Jumlah Data</strong>.</span>
+                </div>
+            </div>
+        </div>
 
         <?php if (isset($error_msg)): ?>
             <div class="alert alert-warning"><?= $error_msg ?></div>
@@ -80,6 +193,53 @@
 
                 <div class="tab-pane fade" id="moora">
 
+                    <h6 class="fw-bold text-primary mt-3"><i class="bi bi-0-circle-fill me-2"></i>Ringkasan Kriteria & Bobot
+                    </h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <th>Kode</th>
+                                    <th>Nama Kriteria</th>
+                                    <th>Jenis</th>
+                                    <th>Bobot</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($kriteria as $k): ?>
+                                    <tr>
+                                        <td class="text-center fw-bold"><?= $k['kode_kriteria'] ?></td>
+                                        <td><?= $k['nama_kriteria'] ?></td>
+                                        <td class="text-center"><?= ucfirst($k['jenis']) ?></td>
+                                        <td class="text-center"><?= number_format($k['bobot'], 4) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="fw-bold text-primary"><i class="bi bi-1-circle-fill me-2"></i>Tahap 0: Pembagi per Kriteria
+                        (√Σx²)</h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <th><?= $k['kode_kriteria'] ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <td class="text-center"><?= number_format($moora_pembagi[$k['id_kriteria']] ?? 0, 4) ?>
+                                        </td>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
                     <h6 class="fw-bold text-primary mt-3"><i class="bi bi-1-circle-fill me-2"></i>Tahap 1: Normalisasi
                         Matriks (X*)</h6>
                     <div class="table-responsive mb-4">
@@ -102,6 +262,36 @@
                                         <?php foreach ($kriteria as $k): ?>
                                             <td class="text-center text-muted small">
                                                 <?= number_format($moora_normalisasi[$a['id_alternatif']][$k['id_kriteria']], 4) ?>
+                                            </td>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="fw-bold text-primary"><i class="bi bi-2-circle-fill me-2"></i>Tahap 1b: Normalisasi Terbobot
+                        (X* × Bobot)</h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <th>Nama Siswa</th>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <th data-bs-toggle="tooltip" data-bs-placement="top"
+                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            <?= $k['kode_kriteria'] ?>
+                                        </th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($alternatif as $a): ?>
+                                    <tr>
+                                        <td><?= $a['nama_siswa'] ?></td>
+                                        <?php foreach ($kriteria as $k): ?>
+                                            <td class="text-center text-muted small">
+                                                <?= number_format($moora_terbobot[$a['id_alternatif']][$k['id_kriteria']], 4) ?>
                                             </td>
                                         <?php endforeach; ?>
                                     </tr>
@@ -147,9 +337,75 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <?php if (isset($contoh)): ?>
+                        <div class="card border-primary mt-4">
+                            <div class="card-header bg-primary text-white fw-bold">
+                                Contoh Perhitungan MOORA (<?= $contoh['nama'] ?> - <?= $contoh['nis'] ?>)
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-bordered table-sm w-100">
+                                        <thead class="bg-light text-center">
+                                            <tr>
+                                                <th>Kode</th>
+                                                <th>Jenis</th>
+                                                <th>Nilai X</th>
+                                                <th>Pembagi</th>
+                                                <th>Normalisasi</th>
+                                                <th>Bobot</th>
+                                                <th>Nilai × Bobot</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($contoh['moora'] as $row): ?>
+                                                <tr>
+                                                    <td class="text-center fw-bold"><?= $row['kode'] ?></td>
+                                                    <td class="text-center"><?= ucfirst($row['jenis']) ?></td>
+                                                    <td class="text-center"><?= number_format($row['raw'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['pembagi'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['norm'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['bobot'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['weighted'], 4) ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="alert alert-light border small mb-0">
+                                    <strong>Total Benefit:</strong> <?= number_format($contoh['moora_total_benefit'], 4) ?>
+                                    &nbsp; | &nbsp;
+                                    <strong>Total Cost:</strong> <?= number_format($contoh['moora_total_cost'], 4) ?>
+                                    &nbsp; | &nbsp;
+                                    <strong>Yi = Benefit - Cost:</strong> <?= number_format($contoh['moora_yi'], 4) ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="tab-pane fade" id="aras">
+
+                    <h6 class="fw-bold text-success mt-3"><i class="bi bi-0-circle-fill me-2"></i>Tahap 0: Nilai Ideal (A0)
+                    </h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <th><?= $k['kode_kriteria'] ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="table-warning fw-bold">
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <td class="text-center"><?= number_format($A0[$k['id_kriteria']] ?? 0, 4) ?></td>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
                     <h6 class="fw-bold text-success mt-3"><i class="bi bi-1-circle-fill me-2"></i>Tahap 1: Matriks
                         Normalisasi (Rij)</h6>
@@ -189,6 +445,68 @@
                                         <?php endforeach; ?>
                                     </tr>
                                 <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="fw-bold text-success"><i class="bi bi-2-circle-fill me-2"></i>Tahap 1a: Transformasi Cost
+                        (1/x)</h6>
+                    <div class="alert alert-light border py-2 small">
+                        <i class="bi bi-info-circle me-1"></i> Untuk kriteria <strong>Cost</strong>, nilai diubah menjadi
+                        <strong>1/x</strong> sebelum dinormalisasi.
+                    </div>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <th>Nama Siswa</th>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <th><?= $k['kode_kriteria'] ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="table-warning fw-bold">
+                                    <td>A0 (Ideal)</td>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <td class="text-center">
+                                            <?= number_format($aras_transform[0][$k['id_kriteria']] ?? 0, 4) ?>
+                                        </td>
+                                    <?php endforeach; ?>
+                                </tr>
+                                <?php foreach ($alternatif as $a): ?>
+                                    <tr>
+                                        <td><?= $a['nama_siswa'] ?></td>
+                                        <?php foreach ($kriteria as $k): ?>
+                                            <td class="text-center text-muted small">
+                                                <?= number_format($aras_transform[$a['id_alternatif']][$k['id_kriteria']], 4) ?>
+                                            </td>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h6 class="fw-bold text-success"><i class="bi bi-2-circle-fill me-2"></i>Tahap 1b: Total Kolom (Σ untuk
+                        Pembagi)</h6>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-bordered table-sm w-100">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <th><?= $k['kode_kriteria'] ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <?php foreach ($kriteria as $k): ?>
+                                        <td class="text-center">
+                                            <?= number_format($aras_total_kolom[$k['id_kriteria']] ?? 0, 4) ?>
+                                        </td>
+                                    <?php endforeach; ?>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -261,13 +579,18 @@
                                             <?= number_format($row['nilai'], 4) ?>
                                         </td>
                                         <td class="text-center">
-                                            <?php 
+                                            <?php
                                             $badge = 'bg-secondary';
-                                            if($row['predikat'] == 'Sangat Baik') $badge = 'bg-success';
-                                            elseif($row['predikat'] == 'Baik') $badge = 'bg-primary';
-                                            elseif($row['predikat'] == 'Cukup') $badge = 'bg-info text-dark';
-                                            elseif($row['predikat'] == 'Kurang') $badge = 'bg-warning text-dark';
-                                            elseif($row['predikat'] == 'Sangat Kurang') $badge = 'bg-danger';
+                                            if ($row['predikat'] == 'Sangat Baik')
+                                                $badge = 'bg-success';
+                                            elseif ($row['predikat'] == 'Baik')
+                                                $badge = 'bg-primary';
+                                            elseif ($row['predikat'] == 'Cukup')
+                                                $badge = 'bg-info text-dark';
+                                            elseif ($row['predikat'] == 'Kurang')
+                                                $badge = 'bg-warning text-dark';
+                                            elseif ($row['predikat'] == 'Sangat Kurang')
+                                                $badge = 'bg-danger';
                                             ?>
                                             <span class="badge <?= $badge ?>"><?= $row['predikat'] ?></span>
                                         </td>
@@ -276,6 +599,51 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <?php if (isset($contoh)): ?>
+                        <div class="card border-success mt-4">
+                            <div class="card-header bg-success text-white fw-bold">
+                                Contoh Perhitungan ARAS (<?= $contoh['nama'] ?> - <?= $contoh['nis'] ?>)
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-bordered table-sm w-100">
+                                        <thead class="bg-light text-center">
+                                            <tr>
+                                                <th>Kode</th>
+                                                <th>Jenis</th>
+                                                <th>Nilai X</th>
+                                                <th>Transform (1/x)</th>
+                                                <th>Total Kolom</th>
+                                                <th>Normalisasi</th>
+                                                <th>Bobot</th>
+                                                <th>Nilai × Bobot</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($contoh['aras'] as $row): ?>
+                                                <tr>
+                                                    <td class="text-center fw-bold"><?= $row['kode'] ?></td>
+                                                    <td class="text-center"><?= ucfirst($row['jenis']) ?></td>
+                                                    <td class="text-center"><?= number_format($row['raw'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['transform'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['total_kolom'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['norm'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['bobot'], 4) ?></td>
+                                                    <td class="text-center"><?= number_format($row['weighted'], 4) ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="alert alert-light border small mb-0">
+                                    <strong>Si:</strong> <?= number_format($contoh['aras_Si'], 4) ?>
+                                    &nbsp; | &nbsp;
+                                    <strong>Ki = Si / S0:</strong> <?= number_format($contoh['aras_Ki'], 4) ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="tab-pane fade" id="komparasi">
@@ -447,6 +815,47 @@
         $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
             $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
         });
+
+        function updateSelectedCount() {
+            const totalSelected = $('.alt-checkbox:checked').length;
+            $('#selectedAltCount').text(totalSelected);
+            if (totalSelected === 0) {
+                $('#dropdownAlternatifLabel').text('Semua Siswa');
+            } else {
+                $('#dropdownAlternatifLabel').text('Siswa Terpilih: ' + totalSelected);
+            }
+        }
+
+        function updateVisibleCount() {
+            const visibleItems = $('.alt-item:visible').length;
+            $('#visibleAltCount').text(visibleItems);
+            $('#emptyAlternatifState').toggleClass('d-none', visibleItems > 0);
+        }
+
+        function filterAlternatif() {
+            const q = $(this).val().toLowerCase().trim();
+            $('.alt-item').each(function () {
+                const label = ($(this).data('label') || '').toString();
+                $(this).toggle(label.includes(q));
+            });
+            updateVisibleCount();
+        }
+
+        $('#searchAlternatif').on('input', filterAlternatif);
+
+        $('#btnSelectAllAlt').on('click', function () {
+            $('.alt-item:visible .alt-checkbox').prop('checked', true);
+            updateSelectedCount();
+        });
+
+        $('#btnClearAllAlt').on('click', function () {
+            $('.alt-checkbox').prop('checked', false);
+            updateSelectedCount();
+        });
+
+        $(document).on('change', '.alt-checkbox', updateSelectedCount);
+        updateSelectedCount();
+        updateVisibleCount();
     });
 </script>
 <?= $this->endSection() ?>

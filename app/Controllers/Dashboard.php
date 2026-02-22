@@ -23,124 +23,307 @@ class Dashboard extends BaseController
 
     public function index()
     {
-        $db = \Config\Database::connect();
-
-        // Ambil data dasar
         $kriteria = $this->kriteriaModel->findAll();
-        $total_siswa = $this->alternatifModel->countAllResults();
+        $allAlternatif = $this->alternatifModel
+            ->orderBy('kelas', 'ASC')
+            ->orderBy('nama_siswa', 'ASC')
+            ->findAll();
+        $allPenilaian = $this->penilaianModel->findAll();
 
-        // Hitung Siswa yang SUDAH dinilai (Distinct ID di tabel penilaian)
-        $siswa_dinilai = $db->table('penilaian')->groupBy('id_alternatif')->countAllResults();
-        $persentase = ($total_siswa > 0) ? round(($siswa_dinilai / $total_siswa) * 100) : 0;
+        $jumlahKriteria = count($kriteria);
+        $jumlahAlternatif = count($allAlternatif);
+        $jumlahUser = $this->userModel->countAllResults();
 
-        // Cek Status AHP (Valid jika total bobot mendekati 1)
-        $total_bobot = array_sum(array_column($kriteria, 'bobot'));
-        $status_ahp = ($total_bobot >= 0.99 && $total_bobot <= 1.01);
+        $totalBobot = array_sum(array_column($kriteria, 'bobot'));
+        $statusAhp = ($totalBobot >= 0.99 && $totalBobot <= 1.01);
 
-        // 1. Data Statistik Dasar (Kotak-kotak atas)
-        $data = [
-            'title' => 'Dashboard',
-            'jumlah_kriteria' => count($kriteria),
-            'jumlah_alternatif' => $total_siswa,
-            'jumlah_user' => $this->userModel->countAllResults(),
-            'siswa_dinilai' => $siswa_dinilai,
-            'persentase_penilaian' => $persentase,
-            'status_ahp' => $status_ahp
-        ];
+        $kelasOptions = array_values(array_unique(array_filter(array_map(
+            static fn($a) => trim((string) ($a['kelas'] ?? '')),
+            $allAlternatif
+        ))));
+        sort($kelasOptions, SORT_NATURAL | SORT_FLAG_CASE);
 
-        // 2. HITUNG SKOR UNTUK GRAFIK (Diambil 5 Terbaik MOORA)
-        // Kita hitung cepat di sini (Copy logika dari Hitung.php)
+        $filterKelas = trim((string) $this->request->getGet('kelas'));
+        $filterTop = (int) $this->request->getGet('top');
+        if ($filterTop <= 0) {
+            $filterTop = 5;
+        }
+        $filterTop = min(max($filterTop, 3), 20);
+        $filterBasis = strtolower(trim((string) $this->request->getGet('basis')));
+        if (!in_array($filterBasis, ['moora', 'aras'], true)) {
+            $filterBasis = 'moora';
+        }
 
-        $alternatif = $this->alternatifModel->findAll();
-        $penilaian = $this->penilaianModel->findAll();
+        $alternatif = $allAlternatif;
+        if ($filterKelas !== '') {
+            $alternatif = array_values(array_filter(
+                $alternatif,
+                static fn($a) => (string) ($a['kelas'] ?? '') === $filterKelas
+            ));
+        }
 
-        $grafik_nama = [];
-        $grafik_ids = [];
-        $grafik_moora = [];
-        $grafik_aras = [];
+        $penilaianByAlt = [];
+        $distinctKriteriaByAlt = [];
+        foreach ($allPenilaian as $row) {
+            $idAlt = (int) $row['id_alternatif'];
+            $penilaianByAlt[$idAlt][] = $row;
+            $distinctKriteriaByAlt[$idAlt][(int) $row['id_kriteria']] = true;
+        }
 
-        if (!empty($alternatif) && !empty($penilaian)) {
-            // Susun Matriks
-            $matriks = [];
-            foreach ($penilaian as $row) {
-                $matriks[$row['id_alternatif']][$row['id_kriteria']] = $row['nilai'];
+        $siswaDinilaiSebagian = 0;
+        $siswaDinilaiLengkap = 0;
+        foreach ($allAlternatif as $a) {
+            $idAlt = (int) $a['id_alternatif'];
+            $countNilai = isset($distinctKriteriaByAlt[$idAlt]) ? count($distinctKriteriaByAlt[$idAlt]) : 0;
+            if ($countNilai > 0) {
+                $siswaDinilaiSebagian++;
             }
-
-            // A. HITUNG MOORA
-            // 1. Pembagi
-            $pembagi = [];
-            foreach ($kriteria as $k) {
-                $sum = 0;
-                foreach ($alternatif as $a) {
-                    $val = $matriks[$a['id_alternatif']][$k['id_kriteria']] ?? 0;
-                    $sum += pow($val, 2);
-                }
-                $pembagi[$k['id_kriteria']] = sqrt($sum);
-            }
-            // 2. Nilai Yi
-            $hasil_moora = [];
-            foreach ($alternatif as $a) {
-                $total = 0;
-                foreach ($kriteria as $k) {
-                    $val = $matriks[$a['id_alternatif']][$k['id_kriteria']] ?? 0;
-                    $norm = ($pembagi[$k['id_kriteria']] != 0) ? $val / $pembagi[$k['id_kriteria']] : 0;
-                    if ($k['jenis'] == 'benefit')
-                        $total += ($norm * $k['bobot']);
-                    else
-                        $total -= ($norm * $k['bobot']);
-                }
-                $hasil_moora[] = ['nama' => $a['nama_siswa'], 'nilai' => $total, 'id' => $a['id_alternatif']];
-            }
-            // Urutkan MOORA (Terbesar)
-            usort($hasil_moora, function ($a, $b) {
-                return $b['nilai'] <=> $a['nilai'];
-            });
-
-            // Ambil Top 5 untuk Grafik
-            $top5 = array_slice($hasil_moora, 0, 5);
-
-            // B. HITUNG ARAS (Hanya untuk 5 orang ini agar grafik nyambung)
-            // (Kita hitung ARAS full dulu biar adil normalisasinya, baru ambil nilainya)
-
-            // -- Logika ARAS Singkat --
-            $nilai_aras_top5 = [];
-            if (!empty($top5)) {
-                // Ambil nilai Ki untuk Top 5 Moora (Hitung ARAS parsial saja)
-                $nilai_aras_top5 = [];
-                foreach ($top5 as $t) {
-                    // 1. Ambil data siswa yg ada di Top 5
-                    $id_alt = $t['id'];
-                    $data_alt = $this->alternatifModel->find($id_alt);
-
-                    // 2. Hitung Si untuk ALTERNATIF
-                    $Si = 0;
-                    foreach ($kriteria as $k) {
-                        $nilai_kriteria = $matriks[$id_alt][$k['id_kriteria']] ?? 0; // Nilai Siswa di Kriteria ini
-                        $Si += $nilai_kriteria * $k['bobot']; // Si = SUM(Nilai * Bobot)
-                    }
-
-                    $nilai_aras_top5[$id_alt] = $Si;
-                }
-            }
-            //dd($nilai_aras_top5);
-
-            // OKE, KITA PAKAI DATA MOORA SAJA UNTUK GRAFIK "TOP 5 SISWA"
-            // Karena membandingkan nilai Yi (bisa negatif) dan Ki (0-1) dalam satu chart kadang bikin grafik jadi aneh skalanya.
-
-            foreach ($top5 as $t) {
-                $grafik_nama[] = $t['nama'];
-                $grafik_ids[] = $t['id'];
-                $grafik_moora[] = number_format($t['nilai'], 4);
-                $grafik_aras[] = isset($nilai_aras_top5[$t['id']]) ? number_format($nilai_aras_top5[$t['id']], 4) : 0;
+            if ($jumlahKriteria > 0 && $countNilai >= $jumlahKriteria) {
+                $siswaDinilaiLengkap++;
             }
         }
 
-        $data['grafik_nama'] = json_encode($grafik_nama);
-        $data['grafik_ids'] = json_encode($grafik_ids);
-        $data['grafik_moora'] = json_encode($grafik_moora);
-        $data['grafik_aras'] = json_encode($grafik_aras);
+        $persentasePenilaian = $jumlahAlternatif > 0
+            ? round(($siswaDinilaiLengkap / $jumlahAlternatif) * 100)
+            : 0;
 
+        $kelasStatsMap = [];
+        foreach ($allAlternatif as $a) {
+            $kelas = (string) ($a['kelas'] ?? '-');
+            if (!isset($kelasStatsMap[$kelas])) {
+                $kelasStatsMap[$kelas] = [
+                    'kelas' => $kelas,
+                    'total' => 0,
+                    'dinilai_lengkap' => 0,
+                    'dinilai_sebagian' => 0,
+                    'belum_dinilai' => 0,
+                    'persen' => 0,
+                ];
+            }
+            $kelasStatsMap[$kelas]['total']++;
+            $idAlt = (int) $a['id_alternatif'];
+            $countNilai = isset($distinctKriteriaByAlt[$idAlt]) ? count($distinctKriteriaByAlt[$idAlt]) : 0;
+            if ($jumlahKriteria > 0 && $countNilai >= $jumlahKriteria) {
+                $kelasStatsMap[$kelas]['dinilai_lengkap']++;
+            } elseif ($countNilai > 0) {
+                $kelasStatsMap[$kelas]['dinilai_sebagian']++;
+            } else {
+                $kelasStatsMap[$kelas]['belum_dinilai']++;
+            }
+        }
+        $kelasStats = array_values($kelasStatsMap);
+        usort($kelasStats, static fn($a, $b) => strnatcasecmp($a['kelas'], $b['kelas']));
+        foreach ($kelasStats as &$k) {
+            $k['persen'] = $k['total'] > 0 ? round(($k['dinilai_lengkap'] / $k['total']) * 100) : 0;
+        }
+        unset($k);
+
+        $eligibleAlternatif = [];
+        foreach ($alternatif as $a) {
+            $idAlt = (int) $a['id_alternatif'];
+            $countNilai = isset($distinctKriteriaByAlt[$idAlt]) ? count($distinctKriteriaByAlt[$idAlt]) : 0;
+            if ($jumlahKriteria > 0 && $countNilai >= $jumlahKriteria) {
+                $eligibleAlternatif[] = $a;
+            }
+        }
+
+        $penilaianEligible = [];
+        $eligibleIdSet = array_flip(array_map(
+            static fn($a) => (int) $a['id_alternatif'],
+            $eligibleAlternatif
+        ));
+        foreach ($allPenilaian as $row) {
+            if (isset($eligibleIdSet[(int) $row['id_alternatif']])) {
+                $penilaianEligible[] = $row;
+            }
+        }
+
+        $hasilMoora = [];
+        $hasilAras = [];
+        if (!empty($eligibleAlternatif) && !empty($penilaianEligible) && !empty($kriteria)) {
+            $matriks = [];
+            foreach ($penilaianEligible as $row) {
+                $matriks[(int) $row['id_alternatif']][(int) $row['id_kriteria']] = (float) $row['nilai'];
+            }
+            $hasilMoora = $this->hitungMooraRingkas($eligibleAlternatif, $kriteria, $matriks);
+            $hasilAras = $this->hitungArasRingkas($eligibleAlternatif, $kriteria, $matriks);
+        }
+
+        $arasById = [];
+        foreach ($hasilAras as $r) {
+            $arasById[(int) $r['id_alternatif']] = (float) $r['nilai'];
+        }
+        $mooraById = [];
+        foreach ($hasilMoora as $r) {
+            $mooraById[(int) $r['id_alternatif']] = (float) $r['nilai'];
+        }
+
+        $basisData = ($filterBasis === 'aras') ? $hasilAras : $hasilMoora;
+        $topData = array_slice($basisData, 0, $filterTop);
+
+        $grafikNama = [];
+        $grafikIds = [];
+        $grafikMoora = [];
+        $grafikAras = [];
+        foreach ($topData as $row) {
+            $id = (int) $row['id_alternatif'];
+            $grafikNama[] = $row['nama'];
+            $grafikIds[] = $id;
+            $grafikMoora[] = round($mooraById[$id] ?? 0, 4);
+            $grafikAras[] = round($arasById[$id] ?? 0, 4);
+        }
+
+        $top10Moora = array_slice($hasilMoora, 0, 10);
+        foreach ($top10Moora as &$row) {
+            $row['aras'] = $arasById[(int) $row['id_alternatif']] ?? 0;
+        }
+        unset($row);
+
+        $activeFilters = [];
+        if ($filterKelas !== '') {
+            $activeFilters[] = 'Kelas: ' . $filterKelas;
+        }
+        $activeFilters[] = 'Top: ' . $filterTop;
+        $activeFilters[] = 'Basis ranking: ' . strtoupper($filterBasis);
+
+        $data = [
+            'title' => 'Dashboard',
+            'jumlah_kriteria' => $jumlahKriteria,
+            'jumlah_alternatif' => $jumlahAlternatif,
+            'jumlah_user' => $jumlahUser,
+            'siswa_dinilai' => $siswaDinilaiLengkap,
+            'siswa_dinilai_sebagian' => $siswaDinilaiSebagian,
+            'persentase_penilaian' => $persentasePenilaian,
+            'status_ahp' => $statusAhp,
+            'total_bobot' => $totalBobot,
+            'kelas_options' => $kelasOptions,
+            'filter_kelas' => $filterKelas,
+            'filter_top' => $filterTop,
+            'filter_basis' => $filterBasis,
+            'active_filters' => $activeFilters,
+            'kelas_stats' => $kelasStats,
+            'eligible_count' => count($eligibleAlternatif),
+            'grafik_nama' => json_encode($grafikNama),
+            'grafik_ids' => json_encode($grafikIds),
+            'grafik_moora' => json_encode($grafikMoora),
+            'grafik_aras' => json_encode($grafikAras),
+            'top_moora' => $top10Moora,
+        ];
 
         return view('dashboard/index', $data);
+    }
+
+    private function hitungMooraRingkas(array $alternatif, array $kriteria, array $matriks): array
+    {
+        $pembagi = [];
+        foreach ($kriteria as $k) {
+            $idK = (int) $k['id_kriteria'];
+            $sum = 0;
+            foreach ($alternatif as $a) {
+                $idA = (int) $a['id_alternatif'];
+                $val = $matriks[$idA][$idK] ?? 0;
+                $sum += ($val * $val);
+            }
+            $pembagi[$idK] = sqrt($sum);
+        }
+
+        $hasil = [];
+        foreach ($alternatif as $a) {
+            $idA = (int) $a['id_alternatif'];
+            $benefit = 0;
+            $cost = 0;
+            foreach ($kriteria as $k) {
+                $idK = (int) $k['id_kriteria'];
+                $val = $matriks[$idA][$idK] ?? 0;
+                $norm = ($pembagi[$idK] ?? 0) != 0 ? ($val / $pembagi[$idK]) : 0;
+                $weighted = $norm * (float) $k['bobot'];
+                if (($k['jenis'] ?? 'benefit') === 'benefit') {
+                    $benefit += $weighted;
+                } else {
+                    $cost += $weighted;
+                }
+            }
+            $hasil[] = [
+                'id_alternatif' => $idA,
+                'nama' => (string) $a['nama_siswa'],
+                'nis' => (string) $a['nis'],
+                'kelas' => (string) ($a['kelas'] ?? ''),
+                'nilai' => $benefit - $cost,
+            ];
+        }
+
+        usort($hasil, static fn($a, $b) => $b['nilai'] <=> $a['nilai']);
+        return $hasil;
+    }
+
+    private function hitungArasRingkas(array $alternatif, array $kriteria, array $matriks): array
+    {
+        $A0 = [];
+        foreach ($kriteria as $k) {
+            $idK = (int) $k['id_kriteria'];
+            $col = [];
+            foreach ($alternatif as $a) {
+                $idA = (int) $a['id_alternatif'];
+                $col[] = $matriks[$idA][$idK] ?? 0;
+            }
+            if (($k['jenis'] ?? 'benefit') === 'benefit') {
+                $A0[$idK] = !empty($col) ? max($col) : 0;
+            } else {
+                $A0[$idK] = !empty($col) ? min($col) : 0;
+            }
+        }
+
+        $matriksFull = [0 => $A0];
+        foreach ($alternatif as $a) {
+            $idA = (int) $a['id_alternatif'];
+            foreach ($kriteria as $k) {
+                $idK = (int) $k['id_kriteria'];
+                $matriksFull[$idA][$idK] = $matriks[$idA][$idK] ?? 0;
+            }
+        }
+
+        $totalKolom = [];
+        foreach ($kriteria as $k) {
+            $idK = (int) $k['id_kriteria'];
+            $sum = 0;
+            foreach ($matriksFull as $vals) {
+                $val = $vals[$idK] ?? 0;
+                if (($k['jenis'] ?? 'benefit') === 'cost') {
+                    $val = ($val != 0) ? (1 / $val) : 0;
+                }
+                $sum += $val;
+            }
+            $totalKolom[$idK] = $sum;
+        }
+
+        $arasTerbobot = [];
+        foreach ($matriksFull as $idA => $vals) {
+            foreach ($kriteria as $k) {
+                $idK = (int) $k['id_kriteria'];
+                $val = $vals[$idK] ?? 0;
+                if (($k['jenis'] ?? 'benefit') === 'cost') {
+                    $val = ($val != 0) ? (1 / $val) : 0;
+                }
+                $norm = ($totalKolom[$idK] ?? 0) != 0 ? ($val / $totalKolom[$idK]) : 0;
+                $arasTerbobot[$idA][$idK] = $norm * (float) $k['bobot'];
+            }
+        }
+
+        $S0 = isset($arasTerbobot[0]) ? array_sum($arasTerbobot[0]) : 0;
+        $hasil = [];
+        foreach ($alternatif as $a) {
+            $idA = (int) $a['id_alternatif'];
+            $Si = isset($arasTerbobot[$idA]) ? array_sum($arasTerbobot[$idA]) : 0;
+            $Ki = $S0 != 0 ? ($Si / $S0) : 0;
+            $hasil[] = [
+                'id_alternatif' => $idA,
+                'nama' => (string) $a['nama_siswa'],
+                'nis' => (string) $a['nis'],
+                'kelas' => (string) ($a['kelas'] ?? ''),
+                'nilai' => $Ki,
+            ];
+        }
+        usort($hasil, static fn($a, $b) => $b['nilai'] <=> $a['nilai']);
+        return $hasil;
     }
 }

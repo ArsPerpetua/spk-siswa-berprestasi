@@ -20,6 +20,29 @@ class Hitung extends BaseController
 
     public function index()
     {
+        $data = [
+            'kriteria' => [],
+            'alternatif' => [],
+            'alternatif_options' => [],
+            'kelas_options' => [],
+            'filter' => [],
+            'filter_query' => [],
+            'total_tersedia' => 0,
+            'total_terpilih' => 0,
+            'matriks' => [],
+            'hasil_moora' => [],
+            'hasil_aras' => [],
+            'moora_pembagi' => [],
+            'moora_normalisasi' => [],
+            'moora_terbobot' => [],
+            'A0' => [],
+            'aras_total_kolom' => [],
+            'aras_transform' => [],
+            'aras_normalisasi' => [],
+            'aras_terbobot' => [],
+            'S0' => 0,
+        ];
+
         // 1. Ambil Data
         $data['kriteria'] = $this->kriteriaModel->findAll();
 
@@ -29,15 +52,31 @@ class Hitung extends BaseController
             return redirect()->to('/ahp')->with('error', "Bobot kriteria belum konsisten atau belum dihitung (Total: " . number_format($total_bobot, 4) . "). Silakan lakukan pembobotan AHP terlebih dahulu.");
         }
 
-        $data['alternatif'] = $this->alternatifModel->findAll();
-        $penilaian = $this->penilaianModel->findAll();
+        $allAlternatif = $this->alternatifModel
+            ->orderBy('kelas', 'ASC')
+            ->orderBy('nama_siswa', 'ASC')
+            ->findAll();
+        $filter = $this->getFilterInput();
+        $data['alternatif_options'] = $allAlternatif;
+        $data['kelas_options'] = $this->extractKelasOptions($allAlternatif);
+        $data['filter'] = $filter;
+        $data['filter_query'] = $this->buildFilterQuery($filter);
+        $data['total_tersedia'] = count($allAlternatif);
+        $data['alternatif'] = $this->applyAlternatifFilter($allAlternatif, $filter);
+        $data['total_terpilih'] = count($data['alternatif']);
+
+        $idSet = array_flip(array_map('intval', array_column($data['alternatif'], 'id_alternatif')));
+        $penilaian = array_values(array_filter(
+            $this->penilaianModel->findAll(),
+            static fn($row) => isset($idSet[(int) $row['id_alternatif']])
+        ));
 
         if (empty($data['alternatif']) || empty($penilaian)) {
             return view('hasil_perhitungan', array_merge($data, [
                 'matriks' => [],
                 'hasil_moora' => [],
                 'hasil_aras' => [],
-                'error_msg' => 'Data Siswa atau Penilaian masih kosong.'
+                'error_msg' => 'Data Siswa atau Penilaian kosong untuk filter yang dipilih.'
             ]));
         }
 
@@ -75,6 +114,15 @@ class Hitung extends BaseController
         }
         $data['moora_normalisasi'] = $moora_normalisasi; // Kirim ke View
 
+        // B2. Normalisasi Terbobot MOORA (X* x bobot)
+        $moora_terbobot = [];
+        foreach ($data['alternatif'] as $a) {
+            foreach ($data['kriteria'] as $k) {
+                $moora_terbobot[$a['id_alternatif']][$k['id_kriteria']] = $moora_normalisasi[$a['id_alternatif']][$k['id_kriteria']] * $k['bobot'];
+            }
+        }
+        $data['moora_terbobot'] = $moora_terbobot;
+
         // C. Nilai Optimasi (Yi)
         $hasil_moora = [];
         foreach ($data['alternatif'] as $a) {
@@ -91,6 +139,7 @@ class Hitung extends BaseController
                 }
             }
             $hasil_moora[] = [
+                'id_alternatif' => $a['id_alternatif'],
                 'nis' => $a['nis'],
                 'nama' => $a['nama_siswa'],
                 'kelas' => $a['kelas'], // Pastikan ini ada
@@ -145,6 +194,19 @@ class Hitung extends BaseController
             }
             $total_kolom_aras[$k['id_kriteria']] = $sum;
         }
+        $data['aras_total_kolom'] = $total_kolom_aras;
+
+        // Simpan nilai transformasi (cost -> 1/x) sebelum normalisasi
+        $aras_transform = [];
+        foreach ($matriks_aras_lengkap as $id_alt => $vals) {
+            foreach ($data['kriteria'] as $k) {
+                $val = $vals[$k['id_kriteria']];
+                if ($k['jenis'] == 'cost')
+                    $val = ($val != 0) ? 1 / $val : 0;
+                $aras_transform[$id_alt][$k['id_kriteria']] = $val;
+            }
+        }
+        $data['aras_transform'] = $aras_transform;
 
         $aras_normalisasi = [];
         foreach ($matriks_aras_lengkap as $id_alt => $vals) {
@@ -179,13 +241,19 @@ class Hitung extends BaseController
 
             // Tentukan Predikat Kelayakan (Interpretasi Kualitatif)
             $predikat = "Kurang";
-            if ($Ki >= 0.9) $predikat = "Sangat Baik";
-            elseif ($Ki >= 0.8) $predikat = "Baik";
-            elseif ($Ki >= 0.7) $predikat = "Cukup";
-            elseif ($Ki >= 0.6) $predikat = "Kurang";
-            else $predikat = "Sangat Kurang";
+            if ($Ki >= 0.9)
+                $predikat = "Sangat Baik";
+            elseif ($Ki >= 0.8)
+                $predikat = "Baik";
+            elseif ($Ki >= 0.7)
+                $predikat = "Cukup";
+            elseif ($Ki >= 0.6)
+                $predikat = "Kurang";
+            else
+                $predikat = "Sangat Kurang";
 
             $hasil_aras[] = [
+                'id_alternatif' => $a['id_alternatif'],
                 'nis' => $a['nis'],
                 'nama' => $a['nama_siswa'],
                 'kelas' => $a['kelas'],
@@ -199,6 +267,84 @@ class Hitung extends BaseController
         });
         $data['hasil_aras'] = $hasil_aras;
 
+        // ==========================================
+        // CONTOH PERHITUNGAN 1 SISWA (DEMO)
+        // ==========================================
+        $contoh_id = $data['alternatif'][0]['id_alternatif'] ?? null;
+        if (!empty($hasil_moora[0]['id_alternatif'])) {
+            $contoh_id = $hasil_moora[0]['id_alternatif'];
+        }
+        $contoh_alt = null;
+        foreach ($data['alternatif'] as $a) {
+            if ($a['id_alternatif'] == $contoh_id) {
+                $contoh_alt = $a;
+                break;
+            }
+        }
+
+        if ($contoh_alt) {
+            $contoh_moora = [];
+            $total_benefit = 0;
+            $total_cost = 0;
+            foreach ($data['kriteria'] as $k) {
+                $raw = $matriks[$contoh_id][$k['id_kriteria']] ?? 0;
+                $pembagi = $moora_pembagi[$k['id_kriteria']] ?? 0;
+                $norm = ($pembagi != 0) ? $raw / $pembagi : 0;
+                $weighted = $norm * $k['bobot'];
+                if ($k['jenis'] == 'benefit') {
+                    $total_benefit += $weighted;
+                } else {
+                    $total_cost += $weighted;
+                }
+                $contoh_moora[] = [
+                    'kode' => $k['kode_kriteria'],
+                    'nama' => $k['nama_kriteria'],
+                    'jenis' => $k['jenis'],
+                    'raw' => $raw,
+                    'pembagi' => $pembagi,
+                    'norm' => $norm,
+                    'bobot' => $k['bobot'],
+                    'weighted' => $weighted
+                ];
+            }
+
+            $contoh_aras = [];
+            $Si = 0;
+            foreach ($data['kriteria'] as $k) {
+                $raw = $matriks[$contoh_id][$k['id_kriteria']] ?? 0;
+                $transform = ($k['jenis'] == 'cost') ? (($raw != 0) ? 1 / $raw : 0) : $raw;
+                $total_kolom = $total_kolom_aras[$k['id_kriteria']] ?? 0;
+                $norm = ($total_kolom != 0) ? $transform / $total_kolom : 0;
+                $weighted = $norm * $k['bobot'];
+                $Si += $weighted;
+                $contoh_aras[] = [
+                    'kode' => $k['kode_kriteria'],
+                    'nama' => $k['nama_kriteria'],
+                    'jenis' => $k['jenis'],
+                    'raw' => $raw,
+                    'transform' => $transform,
+                    'total_kolom' => $total_kolom,
+                    'norm' => $norm,
+                    'bobot' => $k['bobot'],
+                    'weighted' => $weighted
+                ];
+            }
+            $Ki = ($S0 != 0) ? $Si / $S0 : 0;
+
+            $data['contoh'] = [
+                'id' => $contoh_alt['id_alternatif'],
+                'nis' => $contoh_alt['nis'],
+                'nama' => $contoh_alt['nama_siswa'],
+                'kelas' => $contoh_alt['kelas'],
+                'moora' => $contoh_moora,
+                'moora_total_benefit' => $total_benefit,
+                'moora_total_cost' => $total_cost,
+                'moora_yi' => $total_benefit - $total_cost,
+                'aras' => $contoh_aras,
+                'aras_Si' => $Si,
+                'aras_Ki' => $Ki
+            ];
+        }
         return view('hasil_perhitungan', $data);
     }
 
@@ -212,11 +358,22 @@ class Hitung extends BaseController
             return redirect()->to('/ahp')->with('error', "Bobot kriteria belum valid. Silakan hitung AHP dulu.");
         }
 
-        $data['alternatif'] = $this->alternatifModel->findAll();
-        $penilaian = $this->penilaianModel->findAll();
+        $allAlternatif = $this->alternatifModel
+            ->orderBy('kelas', 'ASC')
+            ->orderBy('nama_siswa', 'ASC')
+            ->findAll();
+        $filter = $this->getFilterInput();
+        $data['alternatif'] = $this->applyAlternatifFilter($allAlternatif, $filter);
+        $idSet = array_flip(array_map('intval', array_column($data['alternatif'], 'id_alternatif')));
+        $penilaian = array_values(array_filter(
+            $this->penilaianModel->findAll(),
+            static fn($row) => isset($idSet[(int) $row['id_alternatif']])
+        ));
 
         if (empty($data['alternatif']) || empty($penilaian)) {
-            return redirect()->to('/hitung')->with('error', 'Data kosong!');
+            $query = http_build_query($this->buildFilterQuery($filter));
+            $redirectUrl = '/hitung' . ($query !== '' ? ('?' . $query) : '');
+            return redirect()->to($redirectUrl)->with('error', 'Data kosong untuk filter yang dipilih!');
         }
 
         // --- 1. MATRIKS KEPUTUSAN (X) ---
@@ -253,6 +410,15 @@ class Hitung extends BaseController
         }
         $data['moora_normalisasi'] = $moora_normalisasi;
 
+        // B2. Normalisasi Terbobot MOORA (X* x bobot)
+        $moora_terbobot = [];
+        foreach ($data['alternatif'] as $a) {
+            foreach ($data['kriteria'] as $k) {
+                $moora_terbobot[$a['id_alternatif']][$k['id_kriteria']] = $moora_normalisasi[$a['id_alternatif']][$k['id_kriteria']] * $k['bobot'];
+            }
+        }
+        $data['moora_terbobot'] = $moora_terbobot;
+
         // C. Nilai Optimasi (Yi)
         $hasil_moora = [];
         foreach ($data['alternatif'] as $a) {
@@ -269,6 +435,7 @@ class Hitung extends BaseController
                 }
             }
             $hasil_moora[] = [
+                'id_alternatif' => $a['id_alternatif'],
                 'nis' => $a['nis'],
                 'nama' => $a['nama_siswa'],
                 'kelas' => $a['kelas'],
@@ -325,6 +492,19 @@ class Hitung extends BaseController
             }
             $total_kolom_aras[$k['id_kriteria']] = $sum;
         }
+        $data['aras_total_kolom'] = $total_kolom_aras;
+
+        // Simpan nilai transformasi (cost -> 1/x) sebelum normalisasi
+        $aras_transform = [];
+        foreach ($matriks_aras_lengkap as $id_alt => $vals) {
+            foreach ($data['kriteria'] as $k) {
+                $val = $vals[$k['id_kriteria']];
+                if ($k['jenis'] == 'cost')
+                    $val = ($val != 0) ? 1 / $val : 0;
+                $aras_transform[$id_alt][$k['id_kriteria']] = $val;
+            }
+        }
+        $data['aras_transform'] = $aras_transform;
 
         $aras_normalisasi = [];
         foreach ($matriks_aras_lengkap as $id_alt => $vals) {
@@ -357,6 +537,7 @@ class Hitung extends BaseController
             $Ki = ($S0 != 0) ? $Si / $S0 : 0;
 
             $hasil_aras[] = [
+                'id_alternatif' => $a['id_alternatif'],
                 'nis' => $a['nis'],
                 'nama' => $a['nama_siswa'],
                 'kelas' => $a['kelas'],
@@ -370,6 +551,85 @@ class Hitung extends BaseController
         });
         $data['hasil_aras'] = $hasil_aras;
         $data['S0'] = $S0;
+
+        // ==========================================
+        // CONTOH PERHITUNGAN 1 SISWA (PDF)
+        // ==========================================
+        $contoh_id = $data['alternatif'][0]['id_alternatif'] ?? null;
+        if (!empty($hasil_moora[0]['id_alternatif'])) {
+            $contoh_id = $hasil_moora[0]['id_alternatif'];
+        }
+        $contoh_alt = null;
+        foreach ($data['alternatif'] as $a) {
+            if ($a['id_alternatif'] == $contoh_id) {
+                $contoh_alt = $a;
+                break;
+            }
+        }
+
+        if ($contoh_alt) {
+            $contoh_moora = [];
+            $total_benefit = 0;
+            $total_cost = 0;
+            foreach ($data['kriteria'] as $k) {
+                $raw = $matriks[$contoh_id][$k['id_kriteria']] ?? 0;
+                $pembagi = $moora_pembagi[$k['id_kriteria']] ?? 0;
+                $norm = ($pembagi != 0) ? $raw / $pembagi : 0;
+                $weighted = $norm * $k['bobot'];
+                if ($k['jenis'] == 'benefit') {
+                    $total_benefit += $weighted;
+                } else {
+                    $total_cost += $weighted;
+                }
+                $contoh_moora[] = [
+                    'kode' => $k['kode_kriteria'],
+                    'nama' => $k['nama_kriteria'],
+                    'jenis' => $k['jenis'],
+                    'raw' => $raw,
+                    'pembagi' => $pembagi,
+                    'norm' => $norm,
+                    'bobot' => $k['bobot'],
+                    'weighted' => $weighted
+                ];
+            }
+
+            $contoh_aras = [];
+            $Si = 0;
+            foreach ($data['kriteria'] as $k) {
+                $raw = $matriks[$contoh_id][$k['id_kriteria']] ?? 0;
+                $transform = ($k['jenis'] == 'cost') ? (($raw != 0) ? 1 / $raw : 0) : $raw;
+                $total_kolom = $total_kolom_aras[$k['id_kriteria']] ?? 0;
+                $norm = ($total_kolom != 0) ? $transform / $total_kolom : 0;
+                $weighted = $norm * $k['bobot'];
+                $Si += $weighted;
+                $contoh_aras[] = [
+                    'kode' => $k['kode_kriteria'],
+                    'nama' => $k['nama_kriteria'],
+                    'jenis' => $k['jenis'],
+                    'raw' => $raw,
+                    'transform' => $transform,
+                    'total_kolom' => $total_kolom,
+                    'norm' => $norm,
+                    'bobot' => $k['bobot'],
+                    'weighted' => $weighted
+                ];
+            }
+            $Ki = ($S0 != 0) ? $Si / $S0 : 0;
+
+            $data['contoh'] = [
+                'id' => $contoh_alt['id_alternatif'],
+                'nis' => $contoh_alt['nis'],
+                'nama' => $contoh_alt['nama_siswa'],
+                'kelas' => $contoh_alt['kelas'],
+                'moora' => $contoh_moora,
+                'moora_total_benefit' => $total_benefit,
+                'moora_total_cost' => $total_cost,
+                'moora_yi' => $total_benefit - $total_cost,
+                'aras' => $contoh_aras,
+                'aras_Si' => $Si,
+                'aras_Ki' => $Ki
+            ];
+        }
 
 
         // --- RENDER PDF ---
@@ -515,5 +775,82 @@ class Hitung extends BaseController
             return $b['nilai'] <=> $a['nilai'];
         });
         return $nilai_Si;
+    }
+
+    private function getFilterInput(): array
+    {
+        $kelas = trim((string) $this->request->getGet('kelas'));
+        $limitInput = trim((string) $this->request->getGet('limit'));
+        $limit = (ctype_digit($limitInput) && (int) $limitInput > 0) ? (int) $limitInput : 0;
+
+        $rawIds = $this->request->getGet('alternatif_ids');
+        $rawIds = is_array($rawIds) ? $rawIds : [];
+        $selectedIds = [];
+        foreach ($rawIds as $id) {
+            $id = trim((string) $id);
+            if (ctype_digit($id)) {
+                $selectedIds[] = (int) $id;
+            }
+        }
+        $selectedIds = array_values(array_unique($selectedIds));
+
+        return [
+            'kelas' => $kelas,
+            'limit_input' => $limitInput,
+            'limit' => $limit,
+            'alternatif_ids' => $selectedIds,
+        ];
+    }
+
+    private function applyAlternatifFilter(array $alternatif, array $filter): array
+    {
+        $filtered = $alternatif;
+
+        if (!empty($filter['kelas'])) {
+            $kelas = $filter['kelas'];
+            $filtered = array_values(array_filter(
+                $filtered,
+                static fn($a) => (string) ($a['kelas'] ?? '') === $kelas
+            ));
+        }
+
+        if (!empty($filter['alternatif_ids'])) {
+            $idSet = array_flip($filter['alternatif_ids']);
+            $filtered = array_values(array_filter(
+                $filtered,
+                static fn($a) => isset($idSet[(int) ($a['id_alternatif'] ?? 0)])
+            ));
+        }
+
+        if (!empty($filter['limit']) && count($filtered) > $filter['limit']) {
+            $filtered = array_slice($filtered, 0, $filter['limit']);
+        }
+
+        return $filtered;
+    }
+
+    private function extractKelasOptions(array $alternatif): array
+    {
+        $kelas = array_values(array_unique(array_filter(array_map(
+            static fn($a) => trim((string) ($a['kelas'] ?? '')),
+            $alternatif
+        ))));
+        sort($kelas, SORT_NATURAL | SORT_FLAG_CASE);
+        return $kelas;
+    }
+
+    private function buildFilterQuery(array $filter): array
+    {
+        $query = [];
+        if (!empty($filter['kelas'])) {
+            $query['kelas'] = $filter['kelas'];
+        }
+        if (!empty($filter['limit_input'])) {
+            $query['limit'] = $filter['limit_input'];
+        }
+        if (!empty($filter['alternatif_ids'])) {
+            $query['alternatif_ids'] = $filter['alternatif_ids'];
+        }
+        return $query;
     }
 }

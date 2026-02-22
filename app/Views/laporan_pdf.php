@@ -67,7 +67,47 @@
     <h3>SMA NEGERI 1 UTAN</h3>
     <hr>
 
+    <div class="section-title">RINGKASAN KRITERIA & BOBOT (AHP)</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Kode</th>
+                <th>Nama Kriteria</th>
+                <th>Jenis</th>
+                <th>Bobot</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($kriteria as $k): ?>
+                <tr>
+                    <td><?= $k['kode_kriteria'] ?></td>
+                    <td class="text-left"><?= $k['nama_kriteria'] ?></td>
+                    <td><?= ucfirst($k['jenis']) ?></td>
+                    <td><?= number_format($k['bobot'], 4) ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+
     <div class="section-title">A. HASIL PERHITUNGAN METODE MOORA</div>
+    <div class="section-title" style="color:#111;font-size:12px;margin-top:0;">Pembagi per Kriteria (√Σx²)</div>
+    <table>
+        <thead>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <th><?= $k['kode_kriteria'] ?></th>
+                <?php endforeach; ?>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <td><?= number_format($moora_pembagi[$k['id_kriteria']] ?? 0, 4) ?></td>
+                <?php endforeach; ?>
+            </tr>
+        </tbody>
+    </table>
+
     <table>
         <thead>
             <tr>
@@ -96,7 +136,78 @@
         </tbody>
     </table>
 
+    <?php if (isset($contoh)): ?>
+        <div class="section-title" style="color:#111;font-size:12px;">Contoh Perhitungan MOORA (<?= $contoh['nama'] ?> - <?= $contoh['nis'] ?>)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kode</th>
+                    <th>Jenis</th>
+                    <th>Nilai X</th>
+                    <th>Pembagi</th>
+                    <th>Normalisasi</th>
+                    <th>Bobot</th>
+                    <th>Nilai × Bobot</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($contoh['moora'] as $row): ?>
+                    <tr>
+                        <td><?= $row['kode'] ?></td>
+                        <td><?= ucfirst($row['jenis']) ?></td>
+                        <td><?= number_format($row['raw'], 4) ?></td>
+                        <td><?= number_format($row['pembagi'], 4) ?></td>
+                        <td><?= number_format($row['norm'], 4) ?></td>
+                        <td><?= number_format($row['bobot'], 4) ?></td>
+                        <td><?= number_format($row['weighted'], 4) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p>
+            Total Benefit: <?= number_format($contoh['moora_total_benefit'], 4) ?> |
+            Total Cost: <?= number_format($contoh['moora_total_cost'], 4) ?> |
+            Yi: <?= number_format($contoh['moora_yi'], 4) ?>
+        </p>
+    <?php endif; ?>
+
     <div class="section-title">B. HASIL PERHITUNGAN METODE ARAS</div>
+    <div class="section-title" style="color:#111;font-size:12px;margin-top:0;">Nilai Ideal A0</div>
+    <table>
+        <thead>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <th><?= $k['kode_kriteria'] ?></th>
+                <?php endforeach; ?>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <td><?= number_format($A0[$k['id_kriteria']] ?? 0, 4) ?></td>
+                <?php endforeach; ?>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="section-title" style="color:#111;font-size:12px;margin-top:0;">Total Kolom (Setelah Transformasi Cost 1/x)</div>
+    <table>
+        <thead>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <th><?= $k['kode_kriteria'] ?></th>
+                <?php endforeach; ?>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <?php foreach ($kriteria as $k): ?>
+                    <td><?= number_format($aras_total_kolom[$k['id_kriteria']] ?? 0, 4) ?></td>
+                <?php endforeach; ?>
+            </tr>
+        </tbody>
+    </table>
+
     <table>
         <thead>
             <tr>
@@ -122,6 +233,42 @@
             <?php endforeach; ?>
         </tbody>
     </table>
+
+    <?php if (isset($contoh)): ?>
+        <div class="section-title" style="color:#111;font-size:12px;">Contoh Perhitungan ARAS (<?= $contoh['nama'] ?> - <?= $contoh['nis'] ?>)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Kode</th>
+                    <th>Jenis</th>
+                    <th>Nilai X</th>
+                    <th>Transform (1/x)</th>
+                    <th>Total Kolom</th>
+                    <th>Normalisasi</th>
+                    <th>Bobot</th>
+                    <th>Nilai × Bobot</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($contoh['aras'] as $row): ?>
+                    <tr>
+                        <td><?= $row['kode'] ?></td>
+                        <td><?= ucfirst($row['jenis']) ?></td>
+                        <td><?= number_format($row['raw'], 4) ?></td>
+                        <td><?= number_format($row['transform'], 4) ?></td>
+                        <td><?= number_format($row['total_kolom'], 4) ?></td>
+                        <td><?= number_format($row['norm'], 4) ?></td>
+                        <td><?= number_format($row['bobot'], 4) ?></td>
+                        <td><?= number_format($row['weighted'], 4) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p>
+            Si: <?= number_format($contoh['aras_Si'], 4) ?> |
+            Ki: <?= number_format($contoh['aras_Ki'], 4) ?>
+        </p>
+    <?php endif; ?>
 
     <div class="section-title">C. KESIMPULAN REKOMENDASI (TOP 3)</div>
     <p>Berdasarkan hasil perhitungan kedua metode, berikut adalah siswa dengan peringkat teratas:</p>

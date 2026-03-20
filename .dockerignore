@@ -1,0 +1,26 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+Dockerfile
+.dockerignore
+
+# Development / test artefacts
+vendor/
+writable/
+tests/
+.env
+*.env
+
+# CI / editor config
+.github/
+.editorconfig
+phpunit.xml.dist
+phpunit.xml
+
+# Misc
+*.md
+*.xlsx
+LICENSE

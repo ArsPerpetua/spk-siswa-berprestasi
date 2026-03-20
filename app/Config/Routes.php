@@ -30,7 +30,6 @@ $routes->post('penilaian/save', 'Penilaian::save');
 $routes->post('penilaian/import', 'Penilaian::import');
 $routes->get('penilaian/downloadTemplate', 'Penilaian::downloadTemplate');
 $routes->get('auth/logout', 'Auth::logout');
-$routes->get('buat-admin', 'Auth::buat_admin'); // Rute sementara
 // CRUD Users (Admin)
 $routes->get('users', 'Users::index');
 $routes->get('users/create', 'Users::create');

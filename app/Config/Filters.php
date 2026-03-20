@@ -80,7 +80,6 @@ class Filters extends BaseFilters
                 'except' => [
                     '/',             // Halaman Login
                     'auth/*',        // Proses Login/Logout
-                    'buat-admin'     // Link rahasia tadi
                 ]
             ]
         ],

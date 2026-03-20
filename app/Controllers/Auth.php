@@ -58,21 +58,4 @@ class Auth extends BaseController
         session()->destroy();
         return redirect()->to(base_url('/'));
     }
-
-    // --- FUNGSI RAHASIA UNTUK MEMBUAT AKUN ADMIN PERTAMA KALI ---
-    // Jalankan ini sekali saja lewat browser, lalu hapus kodenya atau abaikan.
-    public function buat_admin()
-    {
-        $userModel = new UserModel();
-        
-        $userModel->insert([
-            'username' => 'admin',
-            // Kita hash password "12345" agar aman
-            'password' => password_hash('12345', PASSWORD_DEFAULT),
-            'nama_lengkap' => 'Administrator Utama',
-            'level' => 'admin'
-        ]);
-
-        echo "User Admin berhasil dibuat! <br> Username: admin <br> Pass: 12345";
-    }
 }

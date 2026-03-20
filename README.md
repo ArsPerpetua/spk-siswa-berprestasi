@@ -41,5 +41,26 @@ Peran saya: Freelance Full-Stack Developer
 
 Catatan: Struktur database disesuaikan dengan tabel `users`, `kriteria`, `alternatif`, `penilaian`, dan `presets`.
 
+## Deploy ke Railway
+Project ini bisa dideploy ke Railway dari GitHub dengan `railway.toml` di root repo.
+
+Environment variables minimum yang perlu diisi di Railway:
+- `CI_ENVIRONMENT=production`
+- `app.baseURL=https://<domain-railway-anda>/`
+- `database.default.hostname=<host-mysql>`
+- `database.default.database=<nama-db>`
+- `database.default.username=<user-db>`
+- `database.default.password=<password-db>`
+- `database.default.DBDriver=MySQLi`
+- `database.default.port=3306`
+
+Start command sudah disediakan lewat `railway.toml`:
+- `php spark serve --host 0.0.0.0 --port $PORT`
+
+Catatan deploy:
+- Tambahkan service MySQL di Railway atau gunakan MySQL eksternal.
+- Folder `writable/` dipakai untuk session/log/cache. Di Railway filesystem bersifat ephemeral, jadi untuk penggunaan yang lebih stabil pertimbangkan Volume atau pindahkan session ke database/Redis.
+- Pastikan akun admin dibuat lewat database atau seeder, bukan route publik.
+
 ## Catatan Pengerjaan
 Proyek ini dikerjakan secara end-to-end sebagai freelance, mencakup analisis kebutuhan, perancangan UI, implementasi backend, dan pengujian fungsional.

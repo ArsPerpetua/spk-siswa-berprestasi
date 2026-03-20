@@ -93,4 +93,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Use the same start command defined in railway.toml
-CMD ["sh", "-c", "php spark serve --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "cd public && php -S 0.0.0.0:${PORT}"]

@@ -32,7 +32,7 @@
                         <tr>
                             <td><?= $no++ ?></td>
                             <td><?= $row['kode_kriteria'] ?></td>
-                            <td><?= $row['nama_kriteria'] ?></td>
+                            <td><?= kriteria_label($row['nama_kriteria']) ?></td>
                             <td><?= number_format($row['bobot'], 4) ?></td>
                             <td>
                                 <?php if ($row['jenis'] == 'benefit'): ?>

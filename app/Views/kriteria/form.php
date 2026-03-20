@@ -27,7 +27,7 @@
             <div class="mb-3">
                 <label class="form-label">Nama Kriteria</label>
                 <input type="text" name="nama_kriteria" class="form-control <?= isset($errors['nama_kriteria']) ? 'is-invalid' : '' ?>" 
-                    value="<?= old('nama_kriteria', $kriteria['nama_kriteria'] ?? '') ?>" placeholder="Contoh: Nilai Rapor">
+                    value="<?= old('nama_kriteria', kriteria_label($kriteria['nama_kriteria'] ?? '')) ?>" placeholder="Contoh: Nilai Rapor">
                 <div class="invalid-feedback"><?= $errors['nama_kriteria'] ?? '' ?></div>
             </div>
 

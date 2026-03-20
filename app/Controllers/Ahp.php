@@ -33,16 +33,17 @@ class Ahp extends BaseController
 
     public function index()
     {
+        $kriteria = $this->kriteriaModel->findAll();
         $data = [
             'title' => 'Pembobotan AHP',
-            'kriteria' => $this->kriteriaModel->findAll(),
-            'presets' => $this->getPresets()
+            'kriteria' => $kriteria,
+            'presets' => $this->getPresets($kriteria)
         ];
         return view('ahp/index', $data);
     }
 
     // Data Preset Skenario Pembobotan
-    private function getPresets()
+    private function getPresets(array $kriteria)
     {
         $presets = [
             [
@@ -54,29 +55,17 @@ class Ahp extends BaseController
             ],
             [
                 'id' => 'akademik',
-                'nama' => 'Fokus Akademik (C1 Dominan)',
-                'deskripsi' => 'Kriteria pertama (C1) dianggap lebih penting (Skala 3-5) dibanding lainnya.',
+                'nama' => 'Fokus Akademik (C1/C6 Dominan)',
+                'deskripsi' => 'C1 (non-inti) dan C6 (inti) diprioritaskan lebih tinggi dibanding kriteria lain.',
                 'type' => 'logic',
-                'data' => [
-                    // Format Key: 'index_baris|index_kolom' (Mulai dari 0)
-                    // Format Value: [nilai_skala, pemenang] (0=Kiri/Baris menang, 1=Kanan/Kolom menang)
-                    '0|1' => [3, 0], // C1 vs C2 -> C1 menang poin 3
-                    '0|2' => [5, 0], // C1 vs C3 -> C1 menang poin 5
-                    '0|3' => [5, 0], // C1 vs C4 -> C1 menang poin 5
-                    '0|4' => [5, 0], // C1 vs C5 -> C1 menang poin 5
-                ]
+                'data' => $this->buildAkademikPresetData($kriteria),
             ],
             [
                 'id' => 'karakter',
                 'nama' => 'Fokus Karakter/Sikap (C3 Dominan)',
-                'deskripsi' => 'Kriteria ketiga (C3) dianggap lebih penting dibanding akademik.',
+                'deskripsi' => 'C3 dianggap lebih penting dibanding kriteria lain, termasuk C6.',
                 'type' => 'logic',
-                'data' => [
-                    '0|2' => [3, 1], // C1 vs C3 -> C3 (Kanan) menang poin 3
-                    '1|2' => [3, 1], // C2 vs C3 -> C3 (Kanan) menang poin 3
-                    '2|3' => [3, 0], // C3 vs C4 -> C3 (Kiri) menang poin 3
-                    '2|4' => [5, 0], // C3 vs C5 -> C3 (Kiri) menang poin 5
-                ]
+                'data' => $this->buildKarakterPresetData($kriteria),
             ]
         ];
 
@@ -93,6 +82,88 @@ class Ahp extends BaseController
         }
 
         return $presets;
+    }
+
+    private function buildAkademikPresetData(array $kriteria): array
+    {
+        $data = [];
+        $indexMap = $this->buildKodeIndexMap($kriteria);
+        $priorityAcademic = [];
+
+        if (isset($indexMap['C1'])) {
+            $priorityAcademic[] = 'C1';
+        }
+        if (isset($indexMap['C6'])) {
+            $priorityAcademic[] = 'C6';
+        }
+
+        foreach ($priorityAcademic as $kode) {
+            $idxAcademic = $indexMap[$kode];
+            foreach ($indexMap as $otherKode => $otherIdx) {
+                if ($otherKode === $kode) {
+                    continue;
+                }
+
+                $scale = 5;
+                if ($otherKode === 'C2') {
+                    $scale = 3;
+                }
+                if (in_array($otherKode, $priorityAcademic, true)) {
+                    $scale = 2;
+                }
+
+                $this->setLogicComparison($data, $idxAcademic, $otherIdx, $scale, $idxAcademic);
+            }
+        }
+
+        return $data;
+    }
+
+    private function buildKarakterPresetData(array $kriteria): array
+    {
+        $data = [];
+        $indexMap = $this->buildKodeIndexMap($kriteria);
+        if (!isset($indexMap['C3'])) {
+            return $data;
+        }
+
+        $idxC3 = $indexMap['C3'];
+        foreach ($indexMap as $kode => $idx) {
+            if ($kode === 'C3') {
+                continue;
+            }
+
+            $scale = in_array($kode, ['C4', 'C5'], true) ? 5 : 3;
+            $this->setLogicComparison($data, $idxC3, $idx, $scale, $idxC3);
+        }
+
+        return $data;
+    }
+
+    private function buildKodeIndexMap(array $kriteria): array
+    {
+        $map = [];
+        foreach (array_values($kriteria) as $idx => $k) {
+            $kode = strtoupper((string) ($k['kode_kriteria'] ?? ''));
+            if ($kode !== '') {
+                $map[$kode] = $idx;
+            }
+        }
+        return $map;
+    }
+
+    private function setLogicComparison(array &$data, int $idxA, int $idxB, int $scale, int $winnerIdx): void
+    {
+        if ($idxA === $idxB) {
+            return;
+        }
+
+        $left = min($idxA, $idxB);
+        $right = max($idxA, $idxB);
+        $winner = ($winnerIdx === $left) ? 0 : 1;
+        $key = $left . '|' . $right;
+
+        $data[$key] = [$scale, $winner];
     }
 
     public function simpanPreset()
@@ -123,7 +194,7 @@ class Ahp extends BaseController
     public function proses()
     {
         $kriteria = $this->kriteriaModel->findAll();
-        $n = count($kriteria); // Jumlah kriteria (Harusnya 5)
+        $n = count($kriteria); // Jumlah kriteria aktif (dinamis)
         $input = $this->request->getPost();
 
         // 1. Inisialisasi Matriks Perbandingan (Isi diagonal dengan 1)
@@ -220,7 +291,7 @@ class Ahp extends BaseController
         $chart_labels = [];
         $chart_data = [];
         foreach ($kriteria as $k) {
-            $chart_labels[] = $k['kode_kriteria'] . ' - ' . $k['nama_kriteria'];
+            $chart_labels[] = $k['kode_kriteria'] . ' - ' . kriteria_label($k['nama_kriteria']);
             $chart_data[] = round($bobot_prioritas[$k['id_kriteria']] * 100, 2); // Dalam Persen
         }
 

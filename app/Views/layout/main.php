@@ -227,27 +227,37 @@
             </a>
 
             <div class="nav-label">Data Master</div>
+            <?php if (strtolower((string) session()->get('level')) !== 'siswa'): ?>
+                <a href="<?= base_url('kriteria') ?>"
+                    class="nav-link <?= (uri_string() == 'kriteria' || strpos(uri_string(), 'kriteria/') === 0) ? 'active' : '' ?>">
+                    <i class="bi bi-list-check"></i> Data Kriteria
+                </a>
 
-            <a href="<?= base_url('kriteria') ?>"
-                class="nav-link <?= (uri_string() == 'kriteria' || strpos(uri_string(), 'kriteria/') === 0) ? 'active' : '' ?>">
-                <i class="bi bi-list-check"></i> Data Kriteria
-            </a>
+                <a href="<?= base_url('ahp') ?>" class="nav-link <?= (uri_string() == 'ahp') ? 'active' : '' ?>">
+                    <i class="bi bi-diagram-3"></i> Pembobotan AHP
+                </a>
 
-            <a href="<?= base_url('ahp') ?>" class="nav-link <?= (uri_string() == 'ahp') ? 'active' : '' ?>">
-                <i class="bi bi-diagram-3"></i> Pembobotan AHP
-            </a>
-
-            <a href="<?= base_url('alternatif') ?>"
-                class="nav-link <?= (uri_string() == 'alternatif' || strpos(uri_string(), 'alternatif/') === 0) ? 'active' : '' ?>">
-                <i class="bi bi-people"></i> Data Siswa
-            </a>
+                <a href="<?= base_url('alternatif') ?>"
+                    class="nav-link <?= (uri_string() == 'alternatif' || strpos(uri_string(), 'alternatif/') === 0) ? 'active' : '' ?>">
+                    <i class="bi bi-people"></i> Data Siswa
+                </a>
+            <?php endif; ?>
 
             <div class="nav-label">Proses & Hasil</div>
 
-            <a href="<?= base_url('penilaian') ?>"
-                class="nav-link <?= (uri_string() == 'penilaian') ? 'active' : '' ?>">
-                <i class="bi bi-pencil-square"></i> Input Penilaian
-            </a>
+            <?php if (strtolower((string) session()->get('level')) !== 'siswa'): ?>
+                <a href="<?= base_url('penilaian') ?>"
+                    class="nav-link <?= (uri_string() == 'penilaian') ? 'active' : '' ?>">
+                    <i class="bi bi-pencil-square"></i> Input Penilaian
+                </a>
+            <?php endif; ?>
+
+            <?php if (strtolower((string) session()->get('level')) === 'siswa'): ?>
+                <a href="<?= base_url('siswa/ranking') ?>"
+                    class="nav-link <?= (uri_string() == 'siswa/ranking') ? 'active' : '' ?>">
+                    <i class="bi bi-award"></i> Lihat Ranking Saya
+                </a>
+            <?php endif; ?>
 
             <a href="<?= base_url('hitung') ?>" class="nav-link <?= (uri_string() == 'hitung') ? 'active' : '' ?>">
                 <i class="bi bi-calculator"></i> Hasil & Komparasi

@@ -42,6 +42,7 @@ $routes->get('users/delete/(:num)', 'Users::delete/$1');
 // Profile (User Login)
 $routes->get('profile', 'Profile::index');
 $routes->post('profile/update', 'Profile::update');
+$routes->get('siswa/ranking', 'Siswa::rankingSaya');
 
 $routes->get('dashboard', 'Dashboard::index');
 $routes->get('ahp', 'Ahp::index');

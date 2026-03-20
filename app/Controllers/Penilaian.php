@@ -104,6 +104,14 @@ class Penilaian extends BaseController
         foreach ($kriteria as $k) {
             $header[] = $k['kode_kriteria']; // C1, C2, dst
         }
+        // Kolom subkriteria opsional (untuk preprocessing terstruktur)
+        $header[] = 'C1_1_BahasaLiterasi';
+        $header[] = 'C1_2_NumerasiDasar';
+        $header[] = 'C1_3_KewargaanSejarah';
+        $header[] = 'C1_4_PraktikKeterampilan';
+        $header[] = 'C3_1_Sakit';
+        $header[] = 'C3_2_Izin';
+        $header[] = 'C3_3_Alpa';
         fputcsv($file, $header);
 
         // 2. Isi Baris dengan Data Siswa (Agar user tinggal isi nilai)
@@ -113,6 +121,14 @@ class Penilaian extends BaseController
             // Kosongkan kolom nilai
             foreach ($kriteria as $k)
                 $row[] = '';
+            // Kolom subkriteria opsional
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
             fputcsv($file, $row);
         }
 
@@ -145,8 +161,10 @@ class Penilaian extends BaseController
 
             // Mapping Index CSV ke ID Kriteria
             $colIndexToId = [];
+            $headerIndexMap = [];
             foreach ($header as $idx => $colName) {
                 $colName = strtoupper(trim($colName));
+                $headerIndexMap[$colName] = $idx;
                 if (isset($kriteriaMap[$colName])) {
                     $colIndexToId[$idx] = $kriteriaMap[$colName];
                 }
@@ -162,9 +180,76 @@ class Penilaian extends BaseController
                 if (!$siswa)
                     continue; // Skip jika siswa tidak ditemukan
 
-                // Loop setiap kolom nilai (C1, C2...)
-                foreach ($colIndexToId as $idx => $id_kriteria) {
-                    $nilai = isset($row[$idx]) ? floatval(str_replace(',', '.', $row[$idx])) : 0;
+                $parseNum = static function ($val): ?float {
+                    $val = trim((string) $val);
+                    if ($val === '') {
+                        return null;
+                    }
+                    return floatval(str_replace(',', '.', $val));
+                };
+
+                // Ambil nilai utama per kode dari file
+                $nilaiByKode = [];
+                foreach ($kriteriaMap as $kode => $idKriteria) {
+                    if (!isset($headerIndexMap[$kode])) {
+                        continue;
+                    }
+                    $idx = $headerIndexMap[$kode];
+                    $nilaiByKode[$kode] = $parseNum($row[$idx] ?? null);
+                }
+
+                // Jika C1 kosong, hitung dari subkriteria C1 (berbobot dan dinormalisasi)
+                if (array_key_exists('C1', $nilaiByKode) && $nilaiByKode['C1'] === null) {
+                    $c11 = isset($headerIndexMap['C1_1_BAHASALITERASI']) ? $parseNum($row[$headerIndexMap['C1_1_BAHASALITERASI']] ?? null) : null;
+                    $c12 = isset($headerIndexMap['C1_2_NUMERASIDASAR']) ? $parseNum($row[$headerIndexMap['C1_2_NUMERASIDASAR']] ?? null) : null;
+                    $c13 = isset($headerIndexMap['C1_3_KEWARGAANSEJARAH']) ? $parseNum($row[$headerIndexMap['C1_3_KEWARGAANSEJARAH']] ?? null) : null;
+                    $c14 = isset($headerIndexMap['C1_4_PRAKTIKKETERAMPILAN']) ? $parseNum($row[$headerIndexMap['C1_4_PRAKTIKKETERAMPILAN']] ?? null) : null;
+
+                    $parts = [
+                        ['v' => $c11, 'w' => 0.35],
+                        ['v' => $c12, 'w' => 0.30],
+                        ['v' => $c13, 'w' => 0.20],
+                        ['v' => $c14, 'w' => 0.15],
+                    ];
+                    $num = 0.0;
+                    $den = 0.0;
+                    foreach ($parts as $p) {
+                        if ($p['v'] === null) {
+                            continue;
+                        }
+                        $num += $p['v'] * $p['w'];
+                        $den += $p['w'];
+                    }
+                    if ($den > 0) {
+                        $nilaiByKode['C1'] = $num / $den;
+                    }
+                }
+
+                // Jika C3 kosong, hitung dari subkriteria C3 (Sakit+Izin+Alpa)
+                if (array_key_exists('C3', $nilaiByKode) && $nilaiByKode['C3'] === null) {
+                    $c31 = isset($headerIndexMap['C3_1_SAKIT']) ? $parseNum($row[$headerIndexMap['C3_1_SAKIT']] ?? null) : null;
+                    $c32 = isset($headerIndexMap['C3_2_IZIN']) ? $parseNum($row[$headerIndexMap['C3_2_IZIN']] ?? null) : null;
+                    $c33 = isset($headerIndexMap['C3_3_ALPA']) ? $parseNum($row[$headerIndexMap['C3_3_ALPA']] ?? null) : null;
+                    $sum = 0.0;
+                    $hasAny = false;
+                    foreach ([$c31, $c32, $c33] as $v) {
+                        if ($v === null) {
+                            continue;
+                        }
+                        $sum += $v;
+                        $hasAny = true;
+                    }
+                    if ($hasAny) {
+                        $nilaiByKode['C3'] = $sum;
+                    }
+                }
+
+                // Upsert nilai utama (C1..C6) ke DB
+                foreach ($nilaiByKode as $kode => $nilai) {
+                    if ($nilai === null || !isset($kriteriaMap[$kode])) {
+                        continue;
+                    }
+                    $id_kriteria = $kriteriaMap[$kode];
 
                     // Hapus nilai lama & Insert baru (Upsert manual)
                     $this->penilaianModel->where('id_alternatif', $siswa['id_alternatif'])->where('id_kriteria', $id_kriteria)->delete();

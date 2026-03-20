@@ -81,7 +81,7 @@
             <?php foreach ($kriteria as $k): ?>
                 <tr>
                     <td><?= $k['kode_kriteria'] ?></td>
-                    <td class="text-left"><?= $k['nama_kriteria'] ?></td>
+                    <td class="text-left"><?= kriteria_label($k['nama_kriteria']) ?></td>
                     <td><?= ucfirst($k['jenis']) ?></td>
                     <td><?= number_format($k['bobot'], 4) ?></td>
                 </tr>

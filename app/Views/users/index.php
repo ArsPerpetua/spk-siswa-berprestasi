@@ -32,8 +32,20 @@
                     <td><?= $row['nama_lengkap'] ?></td>
                     <td><?= $row['username'] ?></td>
                     <td>
-                        <span class="badge bg-<?= ($row['level']=='admin')?'danger':'secondary' ?>">
-                            <?= ucfirst($row['level']) ?>
+                        <?php
+                        $level = strtolower(trim((string) ($row['level'] ?? '')));
+                        if ($level === '' || $level === 'user') {
+                            $level = 'siswa';
+                        }
+                        $badge = 'secondary';
+                        if ($level == 'admin') {
+                            $badge = 'danger';
+                        } elseif ($level == 'siswa') {
+                            $badge = 'info';
+                        }
+                        ?>
+                        <span class="badge bg-<?= $badge ?>">
+                            <?= ucfirst($level) ?>
                         </span>
                     </td>
                     <td>

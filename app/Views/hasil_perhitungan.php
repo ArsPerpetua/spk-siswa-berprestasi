@@ -2,7 +2,7 @@
 
 <?= $this->section('content') ?>
 <?php
-$filter = $filter ?? ['kelas' => '', 'alternatif_ids' => [], 'limit_input' => ''];
+$filter = $filter ?? ['mode' => 'ahp', 'jurusan' => '', 'kelas' => [], 'alternatif_ids' => [], 'limit_input' => ''];
 $kelas_options = $kelas_options ?? [];
 $alternatif_options = $alternatif_options ?? ($alternatif ?? []);
 $total_tersedia = $total_tersedia ?? count($alternatif_options);
@@ -10,8 +10,16 @@ $total_terpilih = $total_terpilih ?? count($alternatif ?? []);
 $filter_query = $filter_query ?? [];
 $selected_siswa_count = count($filter['alternatif_ids'] ?? []);
 $active_filters = [];
+if (($filter['mode'] ?? 'ahp') === 'equal') {
+    $active_filters[] = 'Mode: Tanpa AHP (Bobot Sama)';
+} else {
+    $active_filters[] = 'Mode: AHP';
+}
+if (!empty($filter['jurusan'])) {
+    $active_filters[] = 'Jurusan: ' . strtoupper($filter['jurusan']);
+}
 if (!empty($filter['kelas'])) {
-    $active_filters[] = 'Kelas: ' . $filter['kelas'];
+    $active_filters[] = 'Kelas: ' . implode(', ', $filter['kelas']);
 }
 if (!empty($filter['limit_input'])) {
     $active_filters[] = 'Jumlah Data: ' . $filter['limit_input'];
@@ -36,23 +44,71 @@ if (!empty($filter_query)) {
         <div class="card border mb-3">
             <div class="card-body">
                 <form method="get" action="<?= base_url('hitung') ?>" class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label mb-1">Filter Kelas</label>
-                        <select name="kelas" class="form-select form-select-sm">
-                            <option value="">Semua Kelas</option>
-                            <?php foreach ($kelas_options as $kelas): ?>
-                                <option value="<?= esc($kelas) ?>" <?= ($filter['kelas'] ?? '') === $kelas ? 'selected' : '' ?>>
-                                    <?= esc($kelas) ?>
-                                </option>
-                            <?php endforeach; ?>
+                    <div class="col-lg-2 col-md-6">
+                        <label class="form-label mb-1">Mode Bobot</label>
+                        <select name="mode" class="form-select form-select-sm">
+                            <option value="ahp" <?= (($filter['mode'] ?? 'ahp') === 'ahp') ? 'selected' : '' ?>>AHP</option>
+                            <option value="equal" <?= (($filter['mode'] ?? 'ahp') === 'equal') ? 'selected' : '' ?>>Tanpa AHP (Bobot Sama)</option>
                         </select>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label mb-1">Skenario Perhitungan</label>
+                        <select name="jurusan" class="form-select form-select-sm">
+                            <option value="">Semua Jurusan</option>
+                            <option value="ipa" <?= (($filter['jurusan'] ?? '') === 'ipa') ? 'selected' : '' ?>>Jurusan IPA</option>
+                            <option value="ips" <?= (($filter['jurusan'] ?? '') === 'ips') ? 'selected' : '' ?>>Jurusan IPS</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label mb-1">Filter Kelas</label>
+                        <div class="dropdown w-100" data-bs-auto-close="outside">
+                            <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center"
+                                type="button" id="btnDropdownKelas" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span id="dropdownKelasLabel">Semua Kelas</span>
+                                <i class="bi bi-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu p-2 w-100" style="min-width: 260px; max-width: 420px;">
+                                <input type="text" id="searchKelas" class="form-control form-control-sm mb-2"
+                                    placeholder="Cari kelas...">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnSelectAllKelas">Pilih terlihat</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearAllKelas">Kosongkan</button>
+                                </div>
+                                <div id="kelasChecklist" class="border rounded p-2" style="max-height: 180px; overflow-y: auto;">
+                                    <?php foreach ($kelas_options as $kelas): ?>
+                                        <?php $isSelected = in_array($kelas, ($filter['kelas'] ?? []), true); ?>
+                                        <div class="form-check kelas-item mb-1" data-label="<?= esc(strtolower($kelas), 'attr') ?>">
+                                            <input class="form-check-input kelas-checkbox" type="checkbox" name="kelas[]"
+                                                value="<?= esc($kelas) ?>" id="kelas_<?= esc(md5($kelas), 'attr') ?>" <?= $isSelected ? 'checked' : '' ?>>
+                                            <label class="form-check-label small" for="kelas_<?= esc(md5($kelas), 'attr') ?>">
+                                                <?= esc($kelas) ?>
+                                            </label>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <div id="emptyKelasState" class="text-center text-muted small py-2 d-none">
+                                        Tidak ada kelas sesuai pencarian.
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between mt-2">
+                                    <small class="text-muted">Ditampilkan: <span id="visibleKelasCount">0</span></small>
+                                    <small class="text-muted">Terpilih: <span id="selectedKelasCount">0</span></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
                         <label class="form-label mb-1">Jumlah Data</label>
                         <input type="number" min="1" name="limit" value="<?= esc($filter['limit_input'] ?? '') ?>"
                             class="form-control form-control-sm" placeholder="Semua">
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-lg-auto col-md-6 d-flex gap-2 justify-content-lg-end">
+                        <button type="submit" class="btn btn-sm btn-primary px-4">
+                            <i class="bi bi-funnel-fill me-1"></i> Terapkan
+                        </button>
+                        <a href="<?= base_url('hitung') ?>" class="btn btn-sm btn-outline-secondary px-4">Reset</a>
+                    </div>
+
+                    <div class="col-12">
                         <label class="form-label mb-1">Pilih Siswa Spesifik (opsional)</label>
                         <div class="dropdown w-100" data-bs-auto-close="outside">
                             <button class="btn btn-outline-secondary btn-sm w-100 text-start d-flex justify-content-between align-items-center"
@@ -60,7 +116,7 @@ if (!empty($filter_query)) {
                                 <span id="dropdownAlternatifLabel">Semua Siswa</span>
                                 <i class="bi bi-chevron-down"></i>
                             </button>
-                            <div class="dropdown-menu p-2 w-100" style="min-width: 360px; max-width: 520px;">
+                            <div class="dropdown-menu p-2 w-100" style="min-width: 360px; max-width: 720px;">
                                 <input type="text" id="searchAlternatif" class="form-control form-control-sm mb-2"
                                     placeholder="Cari NIS / nama siswa...">
                                 <div class="d-flex justify-content-between mb-2">
@@ -97,18 +153,11 @@ if (!empty($filter_query)) {
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2 d-grid gap-2">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="bi bi-funnel-fill me-1"></i> Terapkan
-                        </button>
-                        <a href="<?= base_url('hitung') ?>" class="btn btn-sm btn-outline-secondary">Reset</a>
-                    </div>
                 </form>
                 <small class="text-muted d-block mt-2">
-                    Data terhitung: <strong><?= $total_terpilih ?></strong> dari <strong><?= $total_tersedia ?></strong>
-                    siswa.
+                    Data terhitung: <strong><?= $total_terpilih ?></strong> dari <strong><?= $total_tersedia ?></strong> siswa.
                 </small>
-                <div class="alert alert-light border mt-2 py-2 mb-0 small">
+                <div class="alert alert-light border mt-2 py-2 mb-0 small d-flex flex-wrap align-items-center gap-2">
                     <strong>Filter Aktif:</strong>
                     <?php if (empty($active_filters)): ?>
                         <span class="badge bg-secondary">Tanpa Filter (Semua Data)</span>
@@ -117,9 +166,7 @@ if (!empty($filter_query)) {
                             <span class="badge text-bg-primary"><?= esc($item) ?></span>
                         <?php endforeach; ?>
                     <?php endif; ?>
-                    <br>
-                    <span class="text-muted">Urutan penerapan: <strong>Kelas</strong> -> <strong>Siswa Spesifik</strong> ->
-                        <strong>Jumlah Data</strong>.</span>
+                    <span class="text-muted ms-auto">Urutan: Mode Bobot → Jurusan → Kelas → Siswa → Jumlah</span>
                 </div>
             </div>
         </div>
@@ -168,7 +215,7 @@ if (!empty($filter_query)) {
                                     <th>Nama Siswa</th>
                                     <?php foreach ($kriteria as $k): ?>
                                         <th data-bs-toggle="tooltip" data-bs-placement="top"
-                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            title="<?= kriteria_label($k['nama_kriteria']) ?> (<?= ucfirst($k['jenis']) ?>)">
                                             <?= $k['kode_kriteria'] ?><br><small
                                                 class="text-warning"><?= ucfirst($k['jenis']) ?></small>
                                         </th>
@@ -209,7 +256,7 @@ if (!empty($filter_query)) {
                                 <?php foreach ($kriteria as $k): ?>
                                     <tr>
                                         <td class="text-center fw-bold"><?= $k['kode_kriteria'] ?></td>
-                                        <td><?= $k['nama_kriteria'] ?></td>
+                                        <td><?= kriteria_label($k['nama_kriteria']) ?></td>
                                         <td class="text-center"><?= ucfirst($k['jenis']) ?></td>
                                         <td class="text-center"><?= number_format($k['bobot'], 4) ?></td>
                                     </tr>
@@ -249,7 +296,7 @@ if (!empty($filter_query)) {
                                     <th>Nama Siswa</th>
                                     <?php foreach ($kriteria as $k): ?>
                                         <th data-bs-toggle="tooltip" data-bs-placement="top"
-                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            title="<?= kriteria_label($k['nama_kriteria']) ?> (<?= ucfirst($k['jenis']) ?>)">
                                             <?= $k['kode_kriteria'] ?>
                                         </th>
                                     <?php endforeach; ?>
@@ -279,7 +326,7 @@ if (!empty($filter_query)) {
                                     <th>Nama Siswa</th>
                                     <?php foreach ($kriteria as $k): ?>
                                         <th data-bs-toggle="tooltip" data-bs-placement="top"
-                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            title="<?= kriteria_label($k['nama_kriteria']) ?> (<?= ucfirst($k['jenis']) ?>)">
                                             <?= $k['kode_kriteria'] ?>
                                         </th>
                                     <?php endforeach; ?>
@@ -421,7 +468,7 @@ if (!empty($filter_query)) {
                                     <th>Nama Siswa</th>
                                     <?php foreach ($kriteria as $k): ?>
                                         <th data-bs-toggle="tooltip" data-bs-placement="top"
-                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            title="<?= kriteria_label($k['nama_kriteria']) ?> (<?= ucfirst($k['jenis']) ?>)">
                                             <?= $k['kode_kriteria'] ?>
                                         </th>
                                     <?php endforeach; ?>
@@ -520,7 +567,7 @@ if (!empty($filter_query)) {
                                     <th>Nama Siswa</th>
                                     <?php foreach ($kriteria as $k): ?>
                                         <th data-bs-toggle="tooltip" data-bs-placement="top"
-                                            title="<?= $k['nama_kriteria'] ?> (<?= ucfirst($k['jenis']) ?>)">
+                                            title="<?= kriteria_label($k['nama_kriteria']) ?> (<?= ucfirst($k['jenis']) ?>)">
                                             <?= $k['kode_kriteria'] ?>
                                         </th>
                                     <?php endforeach; ?>
@@ -826,10 +873,26 @@ if (!empty($filter_query)) {
             }
         }
 
+        function updateKelasCount() {
+            const totalSelected = $('.kelas-checkbox:checked').length;
+            $('#selectedKelasCount').text(totalSelected);
+            if (totalSelected === 0) {
+                $('#dropdownKelasLabel').text('Semua Kelas');
+            } else {
+                $('#dropdownKelasLabel').text('Kelas Terpilih: ' + totalSelected);
+            }
+        }
+
         function updateVisibleCount() {
             const visibleItems = $('.alt-item:visible').length;
             $('#visibleAltCount').text(visibleItems);
             $('#emptyAlternatifState').toggleClass('d-none', visibleItems > 0);
+        }
+
+        function updateVisibleKelasCount() {
+            const visibleItems = $('.kelas-item:visible').length;
+            $('#visibleKelasCount').text(visibleItems);
+            $('#emptyKelasState').toggleClass('d-none', visibleItems > 0);
         }
 
         function filterAlternatif() {
@@ -841,11 +904,26 @@ if (!empty($filter_query)) {
             updateVisibleCount();
         }
 
+        function filterKelas() {
+            const q = $(this).val().toLowerCase().trim();
+            $('.kelas-item').each(function () {
+                const label = ($(this).data('label') || '').toString();
+                $(this).toggle(label.includes(q));
+            });
+            updateVisibleKelasCount();
+        }
+
         $('#searchAlternatif').on('input', filterAlternatif);
+        $('#searchKelas').on('input', filterKelas);
 
         $('#btnSelectAllAlt').on('click', function () {
             $('.alt-item:visible .alt-checkbox').prop('checked', true);
             updateSelectedCount();
+        });
+
+        $('#btnSelectAllKelas').on('click', function () {
+            $('.kelas-item:visible .kelas-checkbox').prop('checked', true);
+            updateKelasCount();
         });
 
         $('#btnClearAllAlt').on('click', function () {
@@ -853,9 +931,17 @@ if (!empty($filter_query)) {
             updateSelectedCount();
         });
 
+        $('#btnClearAllKelas').on('click', function () {
+            $('.kelas-checkbox').prop('checked', false);
+            updateKelasCount();
+        });
+
         $(document).on('change', '.alt-checkbox', updateSelectedCount);
+        $(document).on('change', '.kelas-checkbox', updateKelasCount);
         updateSelectedCount();
         updateVisibleCount();
+        updateKelasCount();
+        updateVisibleKelasCount();
     });
 </script>
 <?= $this->endSection() ?>

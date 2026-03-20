@@ -28,11 +28,12 @@ class Users extends BaseController
 
     public function store()
     {
+        $level = $this->normalizeLevel((string) $this->request->getPost('level'));
         if (!$this->validate([
             'username' => 'required|is_unique[users.username]',
             'nama_lengkap' => 'required',
             'password' => 'required|min_length[5]',
-            'level' => 'required'
+            'level' => 'required|in_list[admin,siswa]'
         ])) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
@@ -42,7 +43,7 @@ class Users extends BaseController
             'nama_lengkap' => $this->request->getPost('nama_lengkap'),
             // Enkripsi password sebelum disimpan
             'password'     => password_hash($this->request->getPost('password'), PASSWORD_DEFAULT),
-            'level'        => $this->request->getPost('level'),
+            'level'        => $level,
         ]);
 
         return redirect()->to('/users')->with('success', 'User berhasil ditambahkan');
@@ -59,11 +60,18 @@ class Users extends BaseController
 
     public function update($id)
     {
+        $level = $this->normalizeLevel((string) $this->request->getPost('level'));
+        if (!$this->validate([
+            'level' => 'required|in_list[admin,siswa]',
+        ])) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
         // Data yang akan diupdate (Default: Nama, Username, Level)
         $updateData = [
             'nama_lengkap' => $this->request->getPost('nama_lengkap'),
             'username'     => $this->request->getPost('username'),
-            'level'        => $this->request->getPost('level'),
+            'level'        => $level,
         ];
 
         // Cek apakah kolom password diisi?
@@ -82,5 +90,14 @@ class Users extends BaseController
     {
         $this->userModel->delete($id);
         return redirect()->to('/users')->with('success', 'User dihapus');
+    }
+
+    private function normalizeLevel(?string $level): string
+    {
+        $level = strtolower(trim((string) $level));
+        if ($level === 'admin') {
+            return 'admin';
+        }
+        return 'siswa';
     }
 }

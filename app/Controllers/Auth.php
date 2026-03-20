@@ -28,13 +28,18 @@ class Auth extends BaseController
             // Jika password di database belum di-hash (masih polos), 
             // ganti baris ini menjadi: if ($user['password'] == $password)
             if (password_verify($password, $user['password'])) {
+                $level = strtolower(trim((string) ($user['level'] ?? '')));
+                if ($level !== 'admin' && $level !== 'siswa') {
+                    $level = 'siswa';
+                    $userModel->update($user['id_user'], ['level' => $level]);
+                }
                 
                 // 3. Set Session Data
                 $sessionData = [
                     'id_user' => $user['id_user'],
                     'username' => $user['username'],
                     'nama_lengkap' => $user['nama_lengkap'],
-                    'level' => $user['level'],
+                    'level' => $level,
                     'logged_in' => TRUE
                 ];
                 session()->set($sessionData);

@@ -13,3 +13,18 @@
  *
  * @see: https://codeigniter.com/user_guide/extending/common.html
  */
+
+if (!function_exists('kriteria_label')) {
+    /**
+     * Normalize displayed criterion labels across the app.
+     */
+    function kriteria_label(?string $nama): string
+    {
+        $label = trim((string) $nama);
+        if ($label === '') {
+            return '';
+        }
+
+        return preg_replace('/ketidakhadiran/i', 'Absensi', $label) ?? $label;
+    }
+}

@@ -41,8 +41,9 @@
             <div class="mb-3">
                 <label>Level Akses</label>
                 <select name="level" class="form-select">
-                    <option value="user" <?= (isset($user) && $user['level'] == 'user') ? 'selected' : '' ?>>User Biasa</option>
-                    <option value="admin" <?= (isset($user) && $user['level'] == 'admin') ? 'selected' : '' ?>>Administrator</option>
+                    <?php $currentLevel = strtolower(trim((string) ($user['level'] ?? old('level') ?? 'siswa'))); ?>
+                    <option value="admin" <?= ($currentLevel === 'admin') ? 'selected' : '' ?>>Administrator</option>
+                    <option value="siswa" <?= ($currentLevel !== 'admin') ? 'selected' : '' ?>>Siswa</option>
                 </select>
             </div>
 

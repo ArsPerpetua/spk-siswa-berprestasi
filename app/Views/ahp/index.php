@@ -69,7 +69,7 @@
                                 $k2 = $kriteria[$j];
                                 ?>
                                 <tr>
-                                    <td class="fw-bold text-end"><?= $k1['nama_kriteria'] ?> (<?= $k1['kode_kriteria'] ?>)</td>
+                                    <td class="fw-bold text-end"><?= kriteria_label($k1['nama_kriteria']) ?> (<?= $k1['kode_kriteria'] ?>)</td>
 
                                     <td class="text-center bg-white border">
                                         <div class="row g-2 align-items-center">
@@ -100,7 +100,7 @@
                                         </div>
                                     </td>
 
-                                    <td class="fw-bold text-start"><?= $k2['nama_kriteria'] ?> (<?= $k2['kode_kriteria'] ?>)
+                                    <td class="fw-bold text-start"><?= kriteria_label($k2['nama_kriteria']) ?> (<?= $k2['kode_kriteria'] ?>)
                                     </td>
                                 </tr>
                             <?php

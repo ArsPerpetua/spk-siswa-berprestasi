@@ -73,7 +73,9 @@
                     <i class="bi bi-info-circle-fill me-1"></i> <strong>Petunjuk:</strong><br>
                     1. Download template terlebih dahulu.<br>
                     2. Isi nilai pada kolom kriteria (C1, C2, dst).<br>
-                    3. Jangan ubah NIS agar data sinkron.
+                    3. Opsional: isi subkriteria `C1_1..C1_4` dan `C3_1..C3_3`.<br>
+                    4. Jika C1/C3 dikosongkan, sistem akan hitung otomatis dari subkriteria.<br>
+                    5. Jangan ubah NIS agar data sinkron.
                 </div>
                 <div class="mb-3 text-end">
                     <a href="<?= base_url('penilaian/downloadTemplate') ?>" class="btn btn-sm btn-outline-primary"><i

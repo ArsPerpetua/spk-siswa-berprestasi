@@ -34,7 +34,7 @@
                             <?php foreach ($kriteria as $k): ?>
                                 <tr>
                                     <td class="text-center fw-bold"><?= $k['kode_kriteria'] ?></td>
-                                    <td><?= $k['nama_kriteria'] ?></td>
+                                    <td><?= kriteria_label($k['nama_kriteria']) ?></td>
                                     <td class="text-center"><?= number_format($bobot[$k['id_kriteria']], 4) ?></td>
                                     <td class="text-center fw-bold text-primary">
                                         <?= number_format($bobot[$k['id_kriteria']] * 100, 2) ?>%

@@ -14,12 +14,13 @@
 
             <div class="alert alert-info py-2">
                 Silakan masukkan nilai untuk setiap kriteria di bawah ini.
+                <br><small class="text-muted">Catatan: pada proses import CSV, C1 dapat dihitung dari subkriteria C1_1..C1_4 dan C3 dari C3_1..C3_3 jika kolom utama dikosongkan.</small>
             </div>
 
             <?php foreach ($kriteria as $k): ?>
                 <div class="mb-3 row">
                     <label class="col-sm-4 col-form-label fw-bold">
-                        <?= $k['nama_kriteria'] ?> (<?= $k['kode_kriteria'] ?>)
+                        <?= kriteria_label($k['nama_kriteria']) ?> (<?= $k['kode_kriteria'] ?>)
                     </label>
                     <div class="col-sm-8">
                         <input type="number" step="0.01" name="nilai[<?= $k['id_kriteria'] ?>]" class="form-control"

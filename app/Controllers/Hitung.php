@@ -22,6 +22,8 @@ class Hitung extends BaseController
     {
         $data = [
             'kriteria' => [],
+            'weight_mode' => 'ahp',
+            'weight_mode_label' => 'AHP',
             'alternatif' => [],
             'alternatif_options' => [],
             'kelas_options' => [],
@@ -44,22 +46,26 @@ class Hitung extends BaseController
         ];
 
         // 1. Ambil Data
-        $data['kriteria'] = $this->kriteriaModel->findAll();
+        $filter = $this->getFilterInput();
+        $data['filter'] = $filter;
+        $data['weight_mode'] = $filter['mode'];
+        $data['weight_mode_label'] = $this->getWeightModeLabel($filter['mode']);
+        $data['kriteria'] = $this->applyWeightMode($this->kriteriaModel->findAll(), $filter['mode']);
 
-        // Cek apakah bobot sudah dihitung dan valid (Total mendekati 1)
-        $total_bobot = array_sum(array_column($data['kriteria'], 'bobot'));
-        if ($total_bobot < 0.99 || $total_bobot > 1.01) {
-            return redirect()->to('/ahp')->with('error', "Bobot kriteria belum konsisten atau belum dihitung (Total: " . number_format($total_bobot, 4) . "). Silakan lakukan pembobotan AHP terlebih dahulu.");
+        if ($filter['mode'] === 'ahp') {
+            // Cek apakah bobot AHP sudah dihitung dan valid (Total mendekati 1)
+            $total_bobot = array_sum(array_column($data['kriteria'], 'bobot'));
+            if ($total_bobot < 0.99 || $total_bobot > 1.01) {
+                return redirect()->to('/ahp')->with('error', "Mode AHP dipilih, tetapi bobot belum konsisten (Total: " . number_format($total_bobot, 4) . "). Silakan lakukan pembobotan AHP terlebih dahulu atau pilih mode Bobot Sama.");
+            }
         }
 
         $allAlternatif = $this->alternatifModel
             ->orderBy('kelas', 'ASC')
             ->orderBy('nama_siswa', 'ASC')
             ->findAll();
-        $filter = $this->getFilterInput();
         $data['alternatif_options'] = $allAlternatif;
         $data['kelas_options'] = $this->extractKelasOptions($allAlternatif);
-        $data['filter'] = $filter;
         $data['filter_query'] = $this->buildFilterQuery($filter);
         $data['total_tersedia'] = count($allAlternatif);
         $data['alternatif'] = $this->applyAlternatifFilter($allAlternatif, $filter);
@@ -350,19 +356,23 @@ class Hitung extends BaseController
 
     public function cetakPDF()
     {
-        $data['kriteria'] = $this->kriteriaModel->findAll();
+        $filter = $this->getFilterInput();
+        $data['weight_mode'] = $filter['mode'];
+        $data['weight_mode_label'] = $this->getWeightModeLabel($filter['mode']);
+        $data['kriteria'] = $this->applyWeightMode($this->kriteriaModel->findAll(), $filter['mode']);
 
-        // Cek Bobot AHP sebelum cetak (Security Check)
-        $total_bobot = array_sum(array_column($data['kriteria'], 'bobot'));
-        if ($total_bobot < 0.99 || $total_bobot > 1.01) {
-            return redirect()->to('/ahp')->with('error', "Bobot kriteria belum valid. Silakan hitung AHP dulu.");
+        if ($filter['mode'] === 'ahp') {
+            // Cek Bobot AHP sebelum cetak (Security Check)
+            $total_bobot = array_sum(array_column($data['kriteria'], 'bobot'));
+            if ($total_bobot < 0.99 || $total_bobot > 1.01) {
+                return redirect()->to('/ahp')->with('error', "Mode AHP dipilih, tetapi bobot belum valid. Silakan hitung AHP dulu atau pilih mode Bobot Sama.");
+            }
         }
 
         $allAlternatif = $this->alternatifModel
             ->orderBy('kelas', 'ASC')
             ->orderBy('nama_siswa', 'ASC')
             ->findAll();
-        $filter = $this->getFilterInput();
         $data['alternatif'] = $this->applyAlternatifFilter($allAlternatif, $filter);
         $idSet = array_flip(array_map('intval', array_column($data['alternatif'], 'id_alternatif')));
         $penilaian = array_values(array_filter(
@@ -779,7 +789,26 @@ class Hitung extends BaseController
 
     private function getFilterInput(): array
     {
-        $kelas = trim((string) $this->request->getGet('kelas'));
+        $mode = strtolower(trim((string) $this->request->getGet('mode')));
+        $mode = in_array($mode, ['ahp', 'equal'], true) ? $mode : 'ahp';
+        $jurusan = trim((string) $this->request->getGet('jurusan'));
+        $jurusan = in_array(strtolower($jurusan), ['ipa', 'ips'], true) ? strtolower($jurusan) : '';
+        $rawKelas = $this->request->getGet('kelas');
+        $kelas = [];
+        if (is_array($rawKelas)) {
+            foreach ($rawKelas as $k) {
+                $k = trim((string) $k);
+                if ($k !== '') {
+                    $kelas[] = $k;
+                }
+            }
+        } else {
+            $k = trim((string) $rawKelas);
+            if ($k !== '') {
+                $kelas[] = $k;
+            }
+        }
+        $kelas = array_values(array_unique($kelas));
         $limitInput = trim((string) $this->request->getGet('limit'));
         $limit = (ctype_digit($limitInput) && (int) $limitInput > 0) ? (int) $limitInput : 0;
 
@@ -795,6 +824,8 @@ class Hitung extends BaseController
         $selectedIds = array_values(array_unique($selectedIds));
 
         return [
+            'mode' => $mode,
+            'jurusan' => $jurusan,
             'kelas' => $kelas,
             'limit_input' => $limitInput,
             'limit' => $limit,
@@ -806,11 +837,20 @@ class Hitung extends BaseController
     {
         $filtered = $alternatif;
 
-        if (!empty($filter['kelas'])) {
-            $kelas = $filter['kelas'];
+        if (!empty($filter['jurusan'])) {
+            $jurusan = strtoupper($filter['jurusan']);
             $filtered = array_values(array_filter(
                 $filtered,
-                static fn($a) => (string) ($a['kelas'] ?? '') === $kelas
+                static fn($a) => strpos(strtoupper((string) ($a['kelas'] ?? '')), $jurusan) !== false
+            ));
+        }
+
+        if (!empty($filter['kelas'])) {
+            $kelas = $filter['kelas'];
+            $kelasSet = array_flip($kelas);
+            $filtered = array_values(array_filter(
+                $filtered,
+                static fn($a) => isset($kelasSet[(string) ($a['kelas'] ?? '')])
             ));
         }
 
@@ -842,6 +882,12 @@ class Hitung extends BaseController
     private function buildFilterQuery(array $filter): array
     {
         $query = [];
+        if (($filter['mode'] ?? 'ahp') !== 'ahp') {
+            $query['mode'] = $filter['mode'];
+        }
+        if (!empty($filter['jurusan'])) {
+            $query['jurusan'] = $filter['jurusan'];
+        }
         if (!empty($filter['kelas'])) {
             $query['kelas'] = $filter['kelas'];
         }
@@ -852,5 +898,30 @@ class Hitung extends BaseController
             $query['alternatif_ids'] = $filter['alternatif_ids'];
         }
         return $query;
+    }
+
+    private function applyWeightMode(array $kriteria, string $mode): array
+    {
+        if ($mode !== 'equal') {
+            return $kriteria;
+        }
+
+        $count = count($kriteria);
+        if ($count === 0) {
+            return $kriteria;
+        }
+
+        $equalWeight = 1 / $count;
+        foreach ($kriteria as &$k) {
+            $k['bobot'] = $equalWeight;
+        }
+        unset($k);
+
+        return $kriteria;
+    }
+
+    private function getWeightModeLabel(string $mode): string
+    {
+        return $mode === 'equal' ? 'Tanpa AHP (Bobot Sama)' : 'AHP';
     }
 }

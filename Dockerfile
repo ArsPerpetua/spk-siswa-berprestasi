@@ -1,5 +1,5 @@
 # ─── Build stage ─────────────────────────────────────────────────────────────
-FROM php:8.1-cli AS builder
+FROM php:8.2-cli AS builder
 
 # Install system dependencies needed by Composer and PHP extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,7 +43,7 @@ RUN composer install \
 COPY . .
 
 # ─── Runtime stage ────────────────────────────────────────────────────────────
-FROM php:8.1-cli AS runtime
+FROM php:8.2-cli AS runtime
 
 # Install only the runtime PHP extensions required by CodeIgniter 4 + MySQL
 RUN apt-get update && apt-get install -y --no-install-recommends \

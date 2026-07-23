@@ -21,12 +21,23 @@
 
             <div class="mb-3">
                 <label>Nama Lengkap Siswa</label>
-                <input type="text" name="nama_siswa" class="form-control" value="<?= $alternatif['nama_siswa'] ?? old('nama_siswa') ?>" required placeholder="Nama Siswa">
+                <input type="text" name="nama_siswa" id="nama_siswa" class="form-control text-uppercase"
+                    value="<?= esc($alternatif['nama_siswa'] ?? old('nama_siswa')) ?>" required
+                    placeholder="NAMA SISWA" autocomplete="name">
+                <div class="form-text">Nama otomatis diubah menjadi huruf kapital.</div>
             </div>
 
             <div class="mb-3">
                 <label>Kelas</label>
-                <input type="text" name="kelas" class="form-control" value="<?= $alternatif['kelas'] ?? old('kelas') ?>" required placeholder="Contoh: XII IPA 1">
+                <?php $selectedKelas = (string) ($alternatif['kelas'] ?? old('kelas')); ?>
+                <select name="kelas" class="form-select" required>
+                    <option value="" <?= $selectedKelas === '' ? 'selected' : '' ?> disabled>-- Pilih Kelas --</option>
+                    <?php foreach (($kelas_options ?? []) as $kelas): ?>
+                        <option value="<?= esc($kelas) ?>" <?= $selectedKelas === $kelas ? 'selected' : '' ?>>
+                            <?= esc($kelas) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
 
             <a href="<?= base_url('alternatif') ?>" class="btn btn-secondary">Kembali</a>
@@ -34,4 +45,12 @@
         </form>
     </div>
 </div>
+<script>
+document.getElementById('nama_siswa')?.addEventListener('input', function () {
+    const start = this.selectionStart;
+    const end = this.selectionEnd;
+    this.value = this.value.toLocaleUpperCase('id-ID');
+    this.setSelectionRange(start, end);
+});
+</script>
 <?= $this->endSection() ?>

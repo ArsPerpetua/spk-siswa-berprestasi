@@ -2,6 +2,17 @@
 
 <?= $this->section('content') ?>
 
+<?php
+$petunjukKriteria = [
+    'C1' => 'Isi dengan nilai rata-rata mata pelajaran umum/non-inti pada rapor (skala 0–100). Desimal diperbolehkan, contoh: 82,20.',
+    'C2' => 'Isi dengan jumlah kegiatan ekstrakurikuler yang diikuti siswa. Jika tidak mengikuti, isi 0.',
+    'C3' => 'Isi dengan total ketidakhadiran siswa (sakit + izin + alpa). Semakin kecil nilainya semakin baik.',
+    'C4' => 'Isi dengan nilai sikap sesuai data sekolah: 3 = baik, 2 = cukup, dan 1 = kurang.',
+    'C5' => 'Isi jumlah penghargaan yang pernah diraih pada setiap tingkat. Sistem akan mengalikan jumlahnya dengan poin tingkat dan menghitung total C5 otomatis.',
+    'C6' => 'Isi dengan nilai rata-rata mata pelajaran inti pada rapor (skala 0–100). Desimal diperbolehkan, contoh: 85,75.',
+];
+?>
+
 <div class="card shadow-sm col-md-8 mx-auto">
     <div class="card-header bg-primary text-white">
         <h5 class="mb-0">Penilaian: <?= $alternatif['nama_siswa'] ?></h5>
@@ -21,6 +32,9 @@
                 <?php if (strtoupper((string) $k['kode_kriteria']) === 'C5'): ?>
                 <div class="mb-3">
                     <label class="form-label fw-bold"><?= kriteria_label($k['nama_kriteria']) ?> (C5)</label>
+                    <div class="form-text mt-0 mb-2">
+                        <i class="bi bi-info-circle me-1"></i><?= esc($petunjukKriteria['C5']) ?>
+                    </div>
                     <div class="row g-2">
                         <?php foreach (['kabupaten' => 1, 'provinsi' => 2, 'nasional' => 4, 'internasional' => 8] as $level => $point): ?>
                         <div class="col-sm-6 col-lg-3">
@@ -41,7 +55,15 @@
                     <div class="col-sm-8">
                         <input type="number" step="0.01" name="nilai[<?= $k['id_kriteria'] ?>]" class="form-control"
                             placeholder="Masukkan nilai..." value="<?= $nilai_lama[$k['id_kriteria']] ?? '' ?>" required>
-                        <small class="text-muted">Jenis: <?= ucfirst($k['jenis']) ?></small>
+                        <?php $kodeKriteria = strtoupper((string) $k['kode_kriteria']); ?>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <?= esc($petunjukKriteria[$kodeKriteria] ?? 'Isi nilai sesuai data penilaian resmi yang digunakan sekolah.') ?>
+                        </div>
+                        <small class="text-muted d-block mt-1">
+                            Jenis: <?= ucfirst($k['jenis']) ?>
+                            <?= strtolower((string) $k['jenis']) === 'cost' ? '— nilai lebih kecil lebih baik' : '— nilai lebih besar lebih baik' ?>
+                        </small>
                     </div>
                 </div>
                 <?php endif ?>

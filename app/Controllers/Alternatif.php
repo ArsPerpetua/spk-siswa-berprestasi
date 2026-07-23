@@ -6,6 +6,31 @@ class Alternatif extends BaseController
 {
     protected $alternatifModel;
 
+    private const KELAS_OPTIONS = [
+        'Kelas X-1',
+        'Kelas X-2',
+        'Kelas X-3',
+        'Kelas X-4',
+        'Kelas X-5',
+        'Kelas X-6',
+        'Kelas X-7',
+        'Kelas X-8',
+        'Kelas XI_IPS_1',
+        'Kelas XI_IPS_2',
+        'Kelas XI_IPS_3',
+        'Kelas XI_MIPA_1',
+        'Kelas XI_MIPA_2',
+        'Kelas XI_MIPA_3',
+        'Kelas XI_MIPA_4',
+        'XII_IPS_1',
+        'XII_IPS_2',
+        'XII_IPS_3',
+        'XII_MIPA_1',
+        'XII_MIPA_2',
+        'XII_MIPA_3',
+        'XII_MIPA_4',
+    ];
+
     public function __construct()
     {
         $this->alternatifModel = new AlternatifModel();
@@ -22,7 +47,10 @@ class Alternatif extends BaseController
 
     public function create()
     {
-        $data = ['title' => 'Tambah Siswa'];
+        $data = [
+            'title' => 'Tambah Siswa',
+            'kelas_options' => self::KELAS_OPTIONS,
+        ];
         return view('alternatif/form', $data);
     }
 
@@ -31,15 +59,15 @@ class Alternatif extends BaseController
         if (!$this->validate([
             'nis' => 'required|is_unique[alternatif.nis]',
             'nama_siswa' => 'required',
-            'kelas' => 'required'
+            'kelas' => 'required|in_list[' . implode(',', self::KELAS_OPTIONS) . ']'
         ])) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
         $this->alternatifModel->save([
             'nis' => $this->request->getPost('nis'),
-            'nama_siswa' => $this->request->getPost('nama_siswa'),
-            'kelas' => $this->request->getPost('kelas'),
+            'nama_siswa' => $this->uppercaseName((string) $this->request->getPost('nama_siswa')),
+            'kelas' => trim((string) $this->request->getPost('kelas')),
         ]);
 
         return redirect()->to('/alternatif')->with('success', 'Data siswa berhasil disimpan!');
@@ -49,17 +77,26 @@ class Alternatif extends BaseController
     {
         $data = [
             'title' => 'Edit Siswa',
-            'alternatif' => $this->alternatifModel->find($id)
+            'alternatif' => $this->alternatifModel->find($id),
+            'kelas_options' => self::KELAS_OPTIONS,
         ];
         return view('alternatif/form', $data);
     }
 
     public function update($id)
     {
+        if (!$this->validate([
+            'nis' => "required|is_unique[alternatif.nis,id_alternatif,{$id}]",
+            'nama_siswa' => 'required',
+            'kelas' => 'required|in_list[' . implode(',', self::KELAS_OPTIONS) . ']',
+        ])) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
         $this->alternatifModel->update($id, [
             'nis' => $this->request->getPost('nis'),
-            'nama_siswa' => $this->request->getPost('nama_siswa'),
-            'kelas' => $this->request->getPost('kelas'),
+            'nama_siswa' => $this->uppercaseName((string) $this->request->getPost('nama_siswa')),
+            'kelas' => trim((string) $this->request->getPost('kelas')),
         ]);
 
         return redirect()->to('/alternatif')->with('success', 'Data siswa berhasil diupdate!');
@@ -107,8 +144,12 @@ class Alternatif extends BaseController
                 if (count($row) < 3) continue;
 
                 $nis = trim($row[0]);
-                $nama = trim($row[1]);
+                $nama = $this->uppercaseName((string) $row[1]);
                 $kelas = trim($row[2]);
+
+                if (!in_array($kelas, self::KELAS_OPTIONS, true)) {
+                    continue;
+                }
 
                 // Cek duplikasi NIS (Skip jika sudah ada)
                 if ($this->alternatifModel->where('nis', $nis)->countAllResults() > 0) {
@@ -147,5 +188,14 @@ class Alternatif extends BaseController
         
         fclose($file);
         exit;
+    }
+
+    private function uppercaseName(string $name): string
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name) ?? $name);
+
+        return function_exists('mb_strtoupper')
+            ? mb_strtoupper($name, 'UTF-8')
+            : strtoupper($name);
     }
 }

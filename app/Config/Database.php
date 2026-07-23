@@ -194,6 +194,33 @@ class Database extends Config
     {
         parent::__construct();
 
+        // Some container platforms normalize dotted variable names to uppercase
+        // underscore names. Read both formats explicitly so production never
+        // falls back to the localhost defaults.
+        $environmentMap = [
+            'hostname' => ['DATABASE_DEFAULT_HOSTNAME', 'DB_HOST', 'MYSQLHOST', 'database.default.hostname'],
+            'database' => ['DATABASE_DEFAULT_DATABASE', 'DB_DATABASE', 'MYSQLDATABASE', 'database.default.database'],
+            'username' => ['DATABASE_DEFAULT_USERNAME', 'DB_USERNAME', 'MYSQLUSER', 'database.default.username'],
+            'password' => ['DATABASE_DEFAULT_PASSWORD', 'DB_PASSWORD', 'MYSQLPASSWORD', 'database.default.password'],
+            'port'     => ['DATABASE_DEFAULT_PORT', 'DB_PORT', 'MYSQLPORT', 'database.default.port'],
+        ];
+
+        foreach ($environmentMap as $configKey => $environmentKeys) {
+            foreach ($environmentKeys as $environmentKey) {
+                $value = getenv($environmentKey);
+                if ($value === false || ($configKey !== 'password' && trim((string) $value) === '')) {
+                    continue;
+                }
+
+                $this->default[$configKey] = $configKey === 'port'
+                    ? (int) $value
+                    : trim((string) $value, " \t\n\r\0\x0B\"'");
+                break;
+            }
+        }
+
+        $this->default['DBDriver'] = 'MySQLi';
+
         // Ensure that we always set the database group to 'tests' if
         // we are currently running an automated test suite, so that
         // we don't overwrite live data on accident.

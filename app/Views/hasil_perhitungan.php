@@ -2,8 +2,11 @@
 
 <?= $this->section('content') ?>
 <?php
-$filter = $filter ?? ['mode' => 'ahp', 'jurusan' => '', 'kelas' => [], 'alternatif_ids' => [], 'limit_input' => ''];
+$filter = $filter ?? ['mode' => 'ahp', 'jurusan' => '', 'kelas' => [], 'alternatif_ids' => [], 'limit_input' => '', 'periode_id' => 0];
 $kelas_options = $kelas_options ?? [];
+$periode_options = $periode_options ?? [];
+$selected_periode = $selected_periode ?? null;
+$perbandingan_per_kelas = $perbandingan_per_kelas ?? [];
 $alternatif_options = $alternatif_options ?? ($alternatif ?? []);
 $total_tersedia = $total_tersedia ?? count($alternatif_options);
 $total_terpilih = $total_terpilih ?? count($alternatif ?? []);
@@ -23,6 +26,9 @@ if (!empty($filter['kelas'])) {
 }
 if (!empty($filter['limit_input'])) {
     $active_filters[] = 'Jumlah Data: ' . $filter['limit_input'];
+}
+if ($selected_periode) {
+    $active_filters[] = 'Periode Lama: ' . $selected_periode['tahun_ajaran'] . ' ' . $selected_periode['semester'];
 }
 if ($selected_siswa_count > 0) {
     $active_filters[] = 'Siswa Spesifik: ' . $selected_siswa_count . ' siswa';
@@ -51,7 +57,17 @@ if (!empty($filter_query)) {
                             <option value="equal" <?= (($filter['mode'] ?? 'ahp') === 'equal') ? 'selected' : '' ?>>Tanpa AHP (Bobot Sama)</option>
                         </select>
                     </div>
-                    <div class="col-lg-3 col-md-6">
+                    <div class="col-lg-2 col-md-6">
+                        <label class="form-label mb-1">Periode Ranking Lama</label>
+                        <select name="periode_id" class="form-select form-select-sm">
+                            <?php foreach ($periode_options as $period): ?>
+                                <option value="<?= (int) $period['id_periode'] ?>" <?= (int) ($filter['periode_id'] ?? 0) === (int) $period['id_periode'] ? 'selected' : '' ?>>
+                                    <?= esc($period['tahun_ajaran'] . ' ' . $period['semester']) ?>
+                                </option>
+                            <?php endforeach ?>
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
                         <label class="form-label mb-1">Skenario Perhitungan</label>
                         <select name="jurusan" class="form-select form-select-sm">
                             <option value="">Semua Jurusan</option>
@@ -96,16 +112,16 @@ if (!empty($filter_query)) {
                             </div>
                         </div>
                     </div>
-                    <div class="col-lg-2 col-md-6">
+                    <div class="col-lg-1 col-md-6">
                         <label class="form-label mb-1">Jumlah Data</label>
                         <input type="number" min="1" name="limit" value="<?= esc($filter['limit_input'] ?? '') ?>"
                             class="form-control form-control-sm" placeholder="Semua">
                     </div>
-                    <div class="col-lg-auto col-md-6 d-flex gap-2 justify-content-lg-end">
-                        <button type="submit" class="btn btn-sm btn-primary px-4">
+                    <div class="col-lg-2 col-md-6 d-flex gap-2 justify-content-lg-end">
+                        <button type="submit" class="btn btn-sm btn-primary px-2 flex-fill">
                             <i class="bi bi-funnel-fill me-1"></i> Terapkan
                         </button>
-                        <a href="<?= base_url('hitung') ?>" class="btn btn-sm btn-outline-secondary px-4">Reset</a>
+                        <a href="<?= base_url('hitung') ?>" class="btn btn-sm btn-outline-secondary px-2">Reset</a>
                     </div>
 
                     <div class="col-12">
@@ -175,21 +191,25 @@ if (!empty($filter_query)) {
             <div class="alert alert-warning"><?= $error_msg ?></div>
         <?php else: ?>
 
-            <ul class="nav nav-tabs nav-fill fw-bold" id="myTab" role="tablist">
+            <ul class="nav nav-tabs flex-nowrap overflow-auto fw-bold" id="myTab" role="tablist">
                 <li class="nav-item">
-                    <button class="nav-link active" id="data-tab" data-bs-toggle="tab" data-bs-target="#data"
+                    <button class="nav-link active text-nowrap" id="data-tab" data-bs-toggle="tab" data-bs-target="#data"
                         type="button">1. Matriks Awal</button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="moora-tab" data-bs-toggle="tab" data-bs-target="#moora" type="button">2.
+                    <button class="nav-link text-nowrap" id="moora-tab" data-bs-toggle="tab" data-bs-target="#moora" type="button">2.
                         Detail MOORA</button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link" id="aras-tab" data-bs-toggle="tab" data-bs-target="#aras" type="button">3.
+                    <button class="nav-link text-nowrap" id="aras-tab" data-bs-toggle="tab" data-bs-target="#aras" type="button">3.
                         Detail ARAS</button>
                 </li>
                 <li class="nav-item">
-                    <button class="nav-link text-primary" id="komparasi-tab" data-bs-toggle="tab"
+                    <button class="nav-link text-warning text-nowrap" id="sebelum-sesudah-tab" data-bs-toggle="tab"
+                        data-bs-target="#sebelum-sesudah" type="button"><i class="bi bi-arrow-left-right me-1"></i> SEBELUM–SESUDAH</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link text-primary text-nowrap" id="komparasi-tab" data-bs-toggle="tab"
                         data-bs-target="#komparasi" type="button"><i class="bi bi-trophy me-1"></i> KOMPARASI AKHIR</button>
                 </li>
             </ul>
@@ -693,6 +713,62 @@ if (!empty($filter_query)) {
                     <?php endif; ?>
                 </div>
 
+                <div class="tab-pane fade" id="sebelum-sesudah">
+                    <div class="card border-warning shadow-sm mb-4">
+                        <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong><i class="bi bi-calendar-check me-1"></i> Perbandingan Sebelum dan Sesudah SPK per Kelas</strong>
+                                <?php if ($selected_periode): ?>
+                                    <div class="small text-muted"><?= esc($selected_periode['nama_periode']) ?> — <?= esc($selected_periode['tahun_ajaran'] . ' ' . $selected_periode['semester']) ?></div>
+                                <?php endif ?>
+                            </div>
+                            <?php if (strtolower((string) session()->get('level')) !== 'siswa'): ?>
+                                <a href="<?= base_url('periode-ranking') ?>" class="btn btn-sm btn-outline-dark">Kelola Periode</a>
+                            <?php endif ?>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small">Ranking lama berasal dari nilai akademik sebelum metode. MOORA dan ARAS dihitung ulang secara terpisah untuk setiap kelas, sehingga pemenang tidak dapat berasal dari kelas lain.</p>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover align-middle w-100" id="tableSebelumSesudah">
+                                    <thead class="table-dark text-center">
+                                        <tr><th>Kelas</th><th>Sebelum Metode</th><th>Sesudah MOORA</th><th>Sesudah ARAS</th><th>Status</th><th>Penjelasan</th></tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php if (empty($perbandingan_per_kelas)): ?>
+                                        <tr><td colspan="6" class="text-center text-muted py-4">Ranking lama belum tersedia. Buka menu Periode & Ranking Lama lalu generate datanya.</td></tr>
+                                    <?php else: foreach ($perbandingan_per_kelas as $row): ?>
+                                        <?php
+                                        $badge = $row['status'] === 'Tetap' ? 'success' : ($row['status'] === 'Berubah' ? 'warning text-dark' : 'danger');
+                                        ?>
+                                        <tr>
+                                            <td class="fw-bold text-nowrap"><?= esc($row['kelas']) ?></td>
+                                            <td>
+                                                <?php if ($row['lama']): ?>
+                                                    <strong><?= esc($row['lama']['nama_siswa']) ?></strong><br>
+                                                    <small class="text-muted"><?= esc($row['lama']['nis']) ?> · Nilai <?= number_format((float) $row['lama']['nilai_lama'], 2) ?></small>
+                                                <?php else: ?><span class="text-muted">Belum ada</span><?php endif ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($row['moora']): ?>
+                                                    <strong><?= esc($row['moora']['nama']) ?></strong><br><small class="text-primary"><?= number_format((float) $row['moora']['nilai'], 6) ?></small>
+                                                <?php else: ?><span class="text-muted">Belum ada</span><?php endif ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($row['aras']): ?>
+                                                    <strong><?= esc($row['aras']['nama']) ?></strong><br><small class="text-success"><?= number_format((float) $row['aras']['nilai'], 6) ?></small>
+                                                <?php else: ?><span class="text-muted">Belum ada</span><?php endif ?>
+                                            </td>
+                                            <td class="text-center"><span class="badge bg-<?= $badge ?>"><?= esc($row['status']) ?></span></td>
+                                            <td class="small text-muted"><?= esc($row['penjelasan']) ?></td>
+                                        </tr>
+                                    <?php endforeach; endif ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tab-pane fade" id="komparasi">
                     <?php
                     $top_moora = $hasil_moora[0] ?? null;
@@ -854,7 +930,7 @@ if (!empty($filter_query)) {
 <script>
     $(document).ready(function () {
         // Inisialisasi DataTables pada tabel ranking dan komparasi
-        $('#tableMatriks, #tableRankMoora, #tableRankAras, #tableKomparasi').DataTable({
+        $('#tableMatriks, #tableRankMoora, #tableRankAras, #tableKomparasi, #tableSebelumSesudah').DataTable({
             language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json' }
         });
 

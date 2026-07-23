@@ -29,6 +29,10 @@ $routes->get('penilaian/form/(:num)', 'Penilaian::form/$1');
 $routes->post('penilaian/save', 'Penilaian::save');
 $routes->post('penilaian/import', 'Penilaian::import');
 $routes->get('penilaian/downloadTemplate', 'Penilaian::downloadTemplate');
+$routes->get('periode-ranking', 'PeriodeRanking::index');
+$routes->post('periode-ranking/store', 'PeriodeRanking::store');
+$routes->post('periode-ranking/generate/(:num)', 'PeriodeRanking::generate/$1');
+$routes->post('periode-ranking/activate/(:num)', 'PeriodeRanking::activate/$1');
 $routes->get('auth/logout', 'Auth::logout');
 // CRUD Users (Admin)
 $routes->get('users', 'Users::index');

@@ -87,13 +87,53 @@ class SpkCoreTables extends Migration
         $this->forge->addKey('id_penilaian', true);
         $this->forge->addKey(['id_alternatif', 'id_kriteria']);
         $this->forge->createTable('penilaian');
+
+        $this->forge->addField([
+            'id_periode' => ['type' => 'INTEGER', 'auto_increment' => true],
+            'nama_periode' => ['type' => 'VARCHAR', 'constraint' => 100],
+            'tahun_ajaran' => ['type' => 'VARCHAR', 'constraint' => 20],
+            'semester' => ['type' => 'VARCHAR', 'constraint' => 10],
+            'is_aktif' => ['type' => 'INTEGER', 'default' => 0],
+            'created_at' => ['type' => 'DATETIME'],
+            'updated_at' => ['type' => 'DATETIME', 'null' => true],
+        ]);
+        $this->forge->addKey('id_periode', true);
+        $this->forge->createTable('periode_ranking');
+
+        $this->forge->addField([
+            'id_ranking_lama' => ['type' => 'INTEGER', 'auto_increment' => true],
+            'id_periode' => ['type' => 'INTEGER'],
+            'id_alternatif' => ['type' => 'INTEGER'],
+            'kelas' => ['type' => 'VARCHAR', 'constraint' => 50],
+            'ranking_lama' => ['type' => 'INTEGER'],
+            'nilai_lama' => ['type' => 'DECIMAL', 'constraint' => '12,4'],
+            'sumber' => ['type' => 'VARCHAR', 'constraint' => 50],
+            'created_at' => ['type' => 'DATETIME'],
+        ]);
+        $this->forge->addKey('id_ranking_lama', true);
+        $this->forge->createTable('ranking_lama');
+
+        $this->forge->addField([
+            'id_penghargaan' => ['type' => 'INTEGER', 'auto_increment' => true],
+            'id_alternatif' => ['type' => 'INTEGER'],
+            'kabupaten' => ['type' => 'INTEGER', 'default' => 0],
+            'provinsi' => ['type' => 'INTEGER', 'default' => 0],
+            'nasional' => ['type' => 'INTEGER', 'default' => 0],
+            'internasional' => ['type' => 'INTEGER', 'default' => 0],
+            'created_at' => ['type' => 'DATETIME'],
+            'updated_at' => ['type' => 'DATETIME', 'null' => true],
+        ]);
+        $this->forge->addKey('id_penghargaan', true);
+        $this->forge->createTable('penilaian_penghargaan');
     }
 
     public function down(): void
     {
+        $this->forge->dropTable('penilaian_penghargaan');
+        $this->forge->dropTable('ranking_lama');
+        $this->forge->dropTable('periode_ranking');
         $this->forge->dropTable('penilaian');
         $this->forge->dropTable('alternatif');
         $this->forge->dropTable('kriteria');
     }
 }
-

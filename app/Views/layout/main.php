@@ -250,6 +250,10 @@
                     class="nav-link <?= (uri_string() == 'penilaian') ? 'active' : '' ?>">
                     <i class="bi bi-pencil-square"></i> Input Penilaian
                 </a>
+                <a href="<?= base_url('periode-ranking') ?>"
+                    class="nav-link <?= (uri_string() == 'periode-ranking' || strpos(uri_string(), 'periode-ranking/') === 0) ? 'active' : '' ?>">
+                    <i class="bi bi-calendar-check"></i> Periode & Ranking Lama
+                </a>
             <?php endif; ?>
 
             <?php if (strtolower((string) session()->get('level')) === 'siswa'): ?>

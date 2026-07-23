@@ -300,6 +300,31 @@
         </tbody>
     </table>
 
+    <?php if (! empty($perbandingan_per_kelas)): ?>
+        <div class="section-title">D. PERBANDINGAN SEBELUM DAN SESUDAH SPK PER KELAS</div>
+        <?php if (! empty($selected_periode)): ?>
+            <p>Periode ranking lama: <strong><?= esc($selected_periode['nama_periode']) ?></strong>
+                (<?= esc($selected_periode['tahun_ajaran'] . ' ' . $selected_periode['semester']) ?>).</p>
+        <?php endif ?>
+        <table>
+            <thead>
+                <tr><th>Kelas</th><th>Sebelum Metode</th><th>MOORA</th><th>ARAS</th><th>Status</th><th>Penjelasan</th></tr>
+            </thead>
+            <tbody>
+                <?php foreach ($perbandingan_per_kelas as $row): ?>
+                    <tr>
+                        <td><?= esc($row['kelas']) ?></td>
+                        <td><?= esc($row['lama']['nama_siswa'] ?? '-') ?></td>
+                        <td><?= esc($row['moora']['nama'] ?? '-') ?></td>
+                        <td><?= esc($row['aras']['nama'] ?? '-') ?></td>
+                        <td><?= esc($row['status']) ?></td>
+                        <td class="text-left"><?= esc($row['penjelasan']) ?></td>
+                    </tr>
+                <?php endforeach ?>
+            </tbody>
+        </table>
+    <?php endif ?>
+
     <div class="footer">
         <p>Utan, <?= date('d F Y') ?></p>
         <br><br><br>

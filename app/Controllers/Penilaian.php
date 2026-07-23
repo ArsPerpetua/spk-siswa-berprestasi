@@ -4,18 +4,21 @@ namespace App\Controllers;
 use App\Models\AlternatifModel;
 use App\Models\KriteriaModel;
 use App\Models\PenilaianModel;
+use App\Models\PenilaianPenghargaanModel;
 
 class Penilaian extends BaseController
 {
     protected $alternatifModel;
     protected $kriteriaModel;
     protected $penilaianModel;
+    protected $penghargaanModel;
 
     public function __construct()
     {
         $this->alternatifModel = new AlternatifModel();
         $this->kriteriaModel = new KriteriaModel();
         $this->penilaianModel = new PenilaianModel();
+        $this->penghargaanModel = new PenilaianPenghargaanModel();
     }
 
     // 1. Daftar Alternatif untuk Dinilai
@@ -58,11 +61,24 @@ class Penilaian extends BaseController
             $nilai_lama[$p['id_kriteria']] = $p['nilai'];
         }
 
+        $penghargaan = $this->penghargaanModel->where('id_alternatif', $id_alternatif)->first();
+        if (! $penghargaan) {
+            $c5 = null;
+            foreach ($kriteria as $criterion) {
+                if (strtoupper((string) $criterion['kode_kriteria']) === 'C5') {
+                    $c5 = $nilai_lama[$criterion['id_kriteria']] ?? 0;
+                    break;
+                }
+            }
+            $penghargaan = $this->decomposeAwardPoints((int) round((float) $c5));
+        }
+
         $data = [
             'title' => 'Isi Penilaian',
             'alternatif' => $alt,
             'kriteria' => $kriteria,
-            'nilai_lama' => $nilai_lama
+            'nilai_lama' => $nilai_lama,
+            'penghargaan' => $penghargaan,
         ];
 
         return view('penilaian/form', $data);
@@ -72,9 +88,17 @@ class Penilaian extends BaseController
     public function save()
     {
         $id_alternatif = $this->request->getPost('id_alternatif');
-        $input_nilai = $this->request->getPost('nilai'); // Ini berbentuk Array [id_kriteria => nilai]
+        $input_nilai = (array) $this->request->getPost('nilai'); // Format: [id_kriteria => nilai]
 
-        // Hapus dulu nilai lama biar tidak duplikat (Cara paling aman & mudah)
+        $award = $this->sanitizeAwardInput((array) $this->request->getPost('penghargaan'));
+        $awardPoints = $this->awardPoints($award);
+        $c5 = $this->kriteriaModel->where('kode_kriteria', 'C5')->first();
+        if ($c5) {
+            $input_nilai[(int) $c5['id_kriteria']] = $awardPoints;
+        }
+
+        $db = db_connect();
+        $db->transStart();
         $this->penilaianModel->where('id_alternatif', $id_alternatif)->delete();
 
         // Loop setiap kriteria yang diinput
@@ -85,6 +109,19 @@ class Penilaian extends BaseController
                 'nilai' => $nilai
             ]);
         }
+
+        $existingAward = $this->penghargaanModel->where('id_alternatif', $id_alternatif)->first();
+        $awardData = array_merge($award, [
+            'id_alternatif' => (int) $id_alternatif,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        if ($existingAward) {
+            $this->penghargaanModel->update($existingAward['id_penghargaan'], $awardData);
+        } else {
+            $awardData['created_at'] = date('Y-m-d H:i:s');
+            $this->penghargaanModel->insert($awardData);
+        }
+        $db->transComplete();
 
         return redirect()->to('/penilaian')->with('success', 'Penilaian berhasil disimpan!');
     }
@@ -104,6 +141,7 @@ class Penilaian extends BaseController
         foreach ($kriteria as $k) {
             $header[] = $k['kode_kriteria']; // C1, C2, dst
         }
+
         // Kolom subkriteria opsional (untuk preprocessing terstruktur)
         $header[] = 'C1_1_BahasaLiterasi';
         $header[] = 'C1_2_NumerasiDasar';
@@ -112,6 +150,10 @@ class Penilaian extends BaseController
         $header[] = 'C3_1_Sakit';
         $header[] = 'C3_2_Izin';
         $header[] = 'C3_3_Alpa';
+        $header[] = 'C5_1_Kabupaten';
+        $header[] = 'C5_2_Provinsi';
+        $header[] = 'C5_3_Nasional';
+        $header[] = 'C5_4_Internasional';
         fputcsv($file, $header);
 
         // 2. Isi Baris dengan Data Siswa (Agar user tinggal isi nilai)
@@ -122,6 +164,10 @@ class Penilaian extends BaseController
             foreach ($kriteria as $k)
                 $row[] = '';
             // Kolom subkriteria opsional
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
+            $row[] = '';
             $row[] = '';
             $row[] = '';
             $row[] = '';
@@ -244,6 +290,25 @@ class Penilaian extends BaseController
                     }
                 }
 
+                $awardColumns = [
+                    'kabupaten' => 'C5_1_KABUPATEN',
+                    'provinsi' => 'C5_2_PROVINSI',
+                    'nasional' => 'C5_3_NASIONAL',
+                    'internasional' => 'C5_4_INTERNASIONAL',
+                ];
+                $award = [];
+                $hasAwardDetail = false;
+                foreach ($awardColumns as $key => $column) {
+                    $value = isset($headerIndexMap[$column]) ? $parseNum($row[$headerIndexMap[$column]] ?? null) : null;
+                    if ($value !== null) {
+                        $hasAwardDetail = true;
+                    }
+                    $award[$key] = max(0, (int) round((float) ($value ?? 0)));
+                }
+                if ($hasAwardDetail && array_key_exists('C5', $nilaiByKode)) {
+                    $nilaiByKode['C5'] = $this->awardPoints($award);
+                }
+
                 // Upsert nilai utama (C1..C6) ke DB
                 foreach ($nilaiByKode as $kode => $nilai) {
                     if ($nilai === null || !isset($kriteriaMap[$kode])) {
@@ -255,11 +320,55 @@ class Penilaian extends BaseController
                     $this->penilaianModel->where('id_alternatif', $siswa['id_alternatif'])->where('id_kriteria', $id_kriteria)->delete();
                     $this->penilaianModel->insert(['id_alternatif' => $siswa['id_alternatif'], 'id_kriteria' => $id_kriteria, 'nilai' => $nilai]);
                 }
+                if ($hasAwardDetail) {
+                    $existingAward = $this->penghargaanModel->where('id_alternatif', $siswa['id_alternatif'])->first();
+                    $awardData = array_merge($award, [
+                        'id_alternatif' => (int) $siswa['id_alternatif'],
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    if ($existingAward) {
+                        $this->penghargaanModel->update($existingAward['id_penghargaan'], $awardData);
+                    } else {
+                        $awardData['created_at'] = date('Y-m-d H:i:s');
+                        $this->penghargaanModel->insert($awardData);
+                    }
+                }
                 $count++;
             }
             fclose($handle);
             return redirect()->to('/penilaian')->with('success', "Penilaian untuk $count siswa berhasil diimport!");
         }
         return redirect()->back()->with('error', 'Gagal upload file.');
+    }
+
+    private function sanitizeAwardInput(array $input): array
+    {
+        $result = [];
+        foreach (['kabupaten', 'provinsi', 'nasional', 'internasional'] as $key) {
+            $result[$key] = max(0, (int) ($input[$key] ?? 0));
+        }
+        return $result;
+    }
+
+    private function awardPoints(array $award): int
+    {
+        return ((int) ($award['kabupaten'] ?? 0))
+            + (2 * (int) ($award['provinsi'] ?? 0))
+            + (4 * (int) ($award['nasional'] ?? 0))
+            + (8 * (int) ($award['internasional'] ?? 0));
+    }
+
+    private function decomposeAwardPoints(int $points): array
+    {
+        $points = max(0, $points);
+        $international = intdiv($points, 8); $points %= 8;
+        $national = intdiv($points, 4); $points %= 4;
+        $province = intdiv($points, 2); $points %= 2;
+        return [
+            'kabupaten' => $points,
+            'provinsi' => $province,
+            'nasional' => $national,
+            'internasional' => $international,
+        ];
     }
 }

@@ -4,18 +4,24 @@ namespace App\Controllers;
 use App\Models\AlternatifModel;
 use App\Models\KriteriaModel;
 use App\Models\PenilaianModel;
+use App\Models\PeriodeRankingModel;
+use App\Models\RankingLamaModel;
 
 class Hitung extends BaseController
 {
     protected $alternatifModel;
     protected $kriteriaModel;
     protected $penilaianModel;
+    protected $periodeModel;
+    protected $rankingLamaModel;
 
     public function __construct()
     {
         $this->alternatifModel = new AlternatifModel();
         $this->kriteriaModel = new KriteriaModel();
         $this->penilaianModel = new PenilaianModel();
+        $this->periodeModel = new PeriodeRankingModel();
+        $this->rankingLamaModel = new RankingLamaModel();
     }
 
     public function index()
@@ -43,6 +49,9 @@ class Hitung extends BaseController
             'aras_normalisasi' => [],
             'aras_terbobot' => [],
             'S0' => 0,
+            'periode_options' => [],
+            'selected_periode' => null,
+            'perbandingan_per_kelas' => [],
         ];
 
         // 1. Ambil Data
@@ -66,6 +75,8 @@ class Hitung extends BaseController
             ->findAll();
         $data['alternatif_options'] = $allAlternatif;
         $data['kelas_options'] = $this->extractKelasOptions($allAlternatif);
+        $this->loadPeriodSelection($data, $filter);
+        $data['filter'] = $filter;
         $data['filter_query'] = $this->buildFilterQuery($filter);
         $data['total_tersedia'] = count($allAlternatif);
         $data['alternatif'] = $this->applyAlternatifFilter($allAlternatif, $filter);
@@ -82,7 +93,7 @@ class Hitung extends BaseController
                 'matriks' => [],
                 'hasil_moora' => [],
                 'hasil_aras' => [],
-                'error_msg' => 'Data Siswa atau Penilaian kosong untuk filter yang dipilih.'
+                'error_msg' => 'Data Siswa atau Penilaian masih kosong. Silakan sesuaikan filter yang dipilih.'
             ]));
         }
 
@@ -351,12 +362,21 @@ class Hitung extends BaseController
                 'aras_Ki' => $Ki
             ];
         }
+        $data['perbandingan_per_kelas'] = $this->buildBeforeAfterComparison(
+            $filter,
+            $allAlternatif,
+            $data['kriteria'],
+            (int) ($data['selected_periode']['id_periode'] ?? 0)
+        );
         return view('hasil_perhitungan', $data);
     }
 
     public function cetakPDF()
     {
         $filter = $this->getFilterInput();
+        $data['periode_options'] = [];
+        $data['selected_periode'] = null;
+        $this->loadPeriodSelection($data, $filter);
         $data['weight_mode'] = $filter['mode'];
         $data['weight_mode_label'] = $this->getWeightModeLabel($filter['mode']);
         $data['kriteria'] = $this->applyWeightMode($this->kriteriaModel->findAll(), $filter['mode']);
@@ -642,6 +662,13 @@ class Hitung extends BaseController
         }
 
 
+        $data['perbandingan_per_kelas'] = $this->buildBeforeAfterComparison(
+            $filter,
+            $allAlternatif,
+            $data['kriteria'],
+            (int) ($data['selected_periode']['id_periode'] ?? 0)
+        );
+
         // --- RENDER PDF ---
         $dompdf = new \Dompdf\Dompdf();
         $html = view('laporan_pdf', $data);
@@ -682,6 +709,7 @@ class Hitung extends BaseController
                 }
             }
             $nilai_yi[] = [
+                'id_alternatif' => (int) $a['id_alternatif'],
                 'nis' => $a['nis'],
                 'nama' => $a['nama_siswa'],
                 'kelas' => $a['kelas'],
@@ -772,6 +800,7 @@ class Hitung extends BaseController
                 $Ki = ($S0 != 0) ? $Si / $S0 : 0;
 
                 $nilai_Si[] = [
+                    'id_alternatif' => (int) $id_alt,
                     'nis' => $nis,
                     'nama' => $nama,
                     'kelas' => $kelas,
@@ -823,6 +852,9 @@ class Hitung extends BaseController
         }
         $selectedIds = array_values(array_unique($selectedIds));
 
+        $periodeInput = trim((string) $this->request->getGet('periode_id'));
+        $periodeId = ctype_digit($periodeInput) ? (int) $periodeInput : 0;
+
         return [
             'mode' => $mode,
             'jurusan' => $jurusan,
@@ -830,6 +862,7 @@ class Hitung extends BaseController
             'limit_input' => $limitInput,
             'limit' => $limit,
             'alternatif_ids' => $selectedIds,
+            'periode_id' => $periodeId,
         ];
     }
 
@@ -897,7 +930,121 @@ class Hitung extends BaseController
         if (!empty($filter['alternatif_ids'])) {
             $query['alternatif_ids'] = $filter['alternatif_ids'];
         }
+        if (!empty($filter['periode_id'])) {
+            $query['periode_id'] = $filter['periode_id'];
+        }
         return $query;
+    }
+
+    private function loadPeriodSelection(array &$data, array &$filter): void
+    {
+        $db = db_connect();
+        if (! $db->tableExists('periode_ranking')) {
+            return;
+        }
+        $periods = $this->periodeModel->orderBy('is_aktif', 'DESC')->orderBy('id_periode', 'DESC')->findAll();
+        $data['periode_options'] = $periods;
+        if (! $periods) {
+            return;
+        }
+
+        $selected = null;
+        foreach ($periods as $period) {
+            if ((int) $period['id_periode'] === (int) ($filter['periode_id'] ?? 0)) {
+                $selected = $period;
+                break;
+            }
+        }
+        if (! $selected) {
+            foreach ($periods as $period) {
+                if (! empty($period['is_aktif'])) {
+                    $selected = $period;
+                    break;
+                }
+            }
+        }
+        $selected = $selected ?: $periods[0];
+        $filter['periode_id'] = (int) $selected['id_periode'];
+        $data['selected_periode'] = $selected;
+    }
+
+    private function buildBeforeAfterComparison(
+        array $filter,
+        array $allAlternatif,
+        array $kriteria,
+        int $periodeId
+    ): array {
+        $db = db_connect();
+        if ($periodeId <= 0 || ! $db->tableExists('ranking_lama')) {
+            return [];
+        }
+
+        // Perbandingan selalu memakai seluruh siswa pada setiap kelas terpilih.
+        // Filter siswa spesifik dan limit tidak boleh mengubah pemenang kelas.
+        $classFilter = $filter;
+        $classFilter['alternatif_ids'] = [];
+        $classFilter['limit'] = 0;
+        $classFilter['limit_input'] = '';
+        $candidates = $this->applyAlternatifFilter($allAlternatif, $classFilter);
+        $candidateIds = array_map('intval', array_column($candidates, 'id_alternatif'));
+        if (! $candidateIds) {
+            return [];
+        }
+
+        $matrix = [];
+        foreach ($this->penilaianModel->whereIn('id_alternatif', $candidateIds)->findAll() as $score) {
+            $matrix[(int) $score['id_alternatif']][(int) $score['id_kriteria']] = (float) $score['nilai'];
+        }
+
+        $oldRows = $this->rankingLamaModel
+            ->select('ranking_lama.*, alternatif.nis, alternatif.nama_siswa')
+            ->join('alternatif', 'alternatif.id_alternatif = ranking_lama.id_alternatif')
+            ->where('ranking_lama.id_periode', $periodeId)
+            ->where('ranking_lama.ranking_lama', 1)
+            ->findAll();
+        $oldByClass = [];
+        foreach ($oldRows as $row) {
+            $oldByClass[(string) $row['kelas']] = $row;
+        }
+
+        $byClass = [];
+        foreach ($candidates as $student) {
+            $byClass[(string) $student['kelas']][] = $student;
+        }
+        ksort($byClass, SORT_NATURAL);
+
+        $comparison = [];
+        foreach ($byClass as $class => $students) {
+            $moora = $this->hitungMoora($students, $kriteria, $matrix);
+            $aras = $this->hitungAras($students, $kriteria, $matrix);
+            $old = $oldByClass[$class] ?? null;
+            $topMoora = $moora[0] ?? null;
+            $topAras = $aras[0] ?? null;
+            $oldId = (int) ($old['id_alternatif'] ?? 0);
+            $mooraId = (int) ($topMoora['id_alternatif'] ?? 0);
+            $arasId = (int) ($topAras['id_alternatif'] ?? 0);
+
+            if ($oldId > 0 && $oldId === $mooraId && $oldId === $arasId) {
+                $status = 'Tetap';
+                $explanation = 'Pemenang lama tetap unggul setelah seluruh kriteria dihitung dengan MOORA dan ARAS.';
+            } elseif ($mooraId > 0 && $mooraId === $arasId) {
+                $status = 'Berubah';
+                $explanation = 'Kedua metode memilih pemenang baru karena penilaian sesudah SPK mempertimbangkan enam kriteria, bukan hanya nilai akademik.';
+            } else {
+                $status = 'Berbeda';
+                $explanation = 'MOORA dan ARAS memberikan pemenang berbeda akibat teknik normalisasi dan nilai preferensi yang berbeda.';
+            }
+
+            $comparison[] = [
+                'kelas' => $class,
+                'lama' => $old,
+                'moora' => $topMoora,
+                'aras' => $topAras,
+                'status' => $status,
+                'penjelasan' => $explanation,
+            ];
+        }
+        return $comparison;
     }
 
     private function applyWeightMode(array $kriteria, string $mode): array

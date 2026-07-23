@@ -6,6 +6,26 @@ use CodeIgniter\Config\BaseConfig;
 
 class App extends BaseConfig
 {
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Railway exposes the active public hostname automatically. Prefer it
+        // in production so generated links and redirects never fall back to
+        // the localhost development URL.
+        $railwayDomain = trim((string) getenv('RAILWAY_PUBLIC_DOMAIN'));
+        if ($railwayDomain !== '') {
+            $railwayHost = parse_url(
+                str_contains($railwayDomain, '://') ? $railwayDomain : 'https://' . $railwayDomain,
+                PHP_URL_HOST
+            );
+
+            if (is_string($railwayHost) && $railwayHost !== '') {
+                $this->baseURL = 'https://' . $railwayHost . '/';
+            }
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Base Site URL

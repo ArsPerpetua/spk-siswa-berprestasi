@@ -121,10 +121,9 @@
             </tr>
         </thead>
         <tbody>
-            <?php $rank = 1;
-            foreach ($hasil_moora as $row): ?>
+            <?php foreach ($hasil_moora as $row): ?>
                 <tr>
-                    <td><?= $rank++ ?></td>
+                    <td><?= (int) ($row['rank'] ?? 0) ?></td>
                     <td><?= $row['nis'] ?></td>
                     <td class="text-left"><?= $row['nama'] ?></td>
                     <td><?= $row['kelas'] ?></td>
@@ -220,10 +219,9 @@
             </tr>
         </thead>
         <tbody>
-            <?php $rank = 1;
-            foreach ($hasil_aras as $row): ?>
+            <?php foreach ($hasil_aras as $row): ?>
                 <tr>
-                    <td><?= $rank++ ?></td>
+                    <td><?= (int) ($row['rank'] ?? 0) ?></td>
                     <td><?= $row['nis'] ?></td>
                     <td class="text-left"><?= $row['nama'] ?></td>
                     <td><?= $row['kelas'] ?></td>
@@ -270,30 +268,38 @@
         </p>
     <?php endif; ?>
 
-    <div class="section-title">C. KESIMPULAN REKOMENDASI (TOP 3)</div>
-    <p>Berdasarkan hasil perhitungan kedua metode, berikut adalah siswa dengan peringkat teratas:</p>
+    <div class="section-title">C. KESIMPULAN REKOMENDASI (PERINGKAT 1-3)</div>
+    <p>Berdasarkan hasil perhitungan kedua metode, berikut adalah siswa dengan peringkat teratas. Nilai seri memperoleh peringkat yang sama.</p>
+
+    <?php
+    $top_moora_pdf = array_values(array_filter($hasil_moora, static fn($row) => (int) ($row['rank'] ?? 0) <= 3));
+    $top_aras_pdf = array_values(array_filter($hasil_aras, static fn($row) => (int) ($row['rank'] ?? 0) <= 3));
+    $jumlah_top_pdf = max(count($top_moora_pdf), count($top_aras_pdf));
+    ?>
 
     <table style="width: 60%; margin: 0 auto;">
         <thead>
             <tr>
-                <th>Peringkat</th>
+                <th>Rank MOORA</th>
                 <th>Rekomendasi MOORA</th>
+                <th>Rank ARAS</th>
                 <th>Rekomendasi ARAS</th>
             </tr>
         </thead>
         <tbody>
-            <?php for ($i = 0; $i < 3; $i++): ?>
+            <?php for ($i = 0; $i < $jumlah_top_pdf; $i++): ?>
                 <tr>
-                    <td><strong>Juara <?= $i + 1 ?></strong></td>
+                    <td><strong><?= isset($top_moora_pdf[$i]) ? (int) ($top_moora_pdf[$i]['rank'] ?? 0) : '-' ?></strong></td>
                     <td>
-                        <?= isset($hasil_moora[$i]) ? $hasil_moora[$i]['nama'] : '-' ?>
+                        <?= isset($top_moora_pdf[$i]) ? $top_moora_pdf[$i]['nama'] : '-' ?>
                         <br><small>(Nilai:
-                            <?= isset($hasil_moora[$i]) ? number_format($hasil_moora[$i]['nilai'], 4) : 0 ?>)</small>
+                            <?= isset($top_moora_pdf[$i]) ? number_format($top_moora_pdf[$i]['nilai'], 4) : 0 ?>)</small>
                     </td>
+                    <td><strong><?= isset($top_aras_pdf[$i]) ? (int) ($top_aras_pdf[$i]['rank'] ?? 0) : '-' ?></strong></td>
                     <td>
-                        <?= isset($hasil_aras[$i]) ? $hasil_aras[$i]['nama'] : '-' ?>
+                        <?= isset($top_aras_pdf[$i]) ? $top_aras_pdf[$i]['nama'] : '-' ?>
                         <br><small>(Nilai:
-                            <?= isset($hasil_aras[$i]) ? number_format($hasil_aras[$i]['Ki'], 4) : 0 ?>)</small>
+                            <?= isset($top_aras_pdf[$i]) ? number_format($top_aras_pdf[$i]['Ki'], 4) : 0 ?>)</small>
                     </td>
                 </tr>
             <?php endfor; ?>

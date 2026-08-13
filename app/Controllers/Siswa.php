@@ -89,7 +89,7 @@ class Siswa extends BaseController
             foreach ($hasilMoora as $idx => $row) {
                 if ((int) $row['id_alternatif'] === $myId) {
                     $myMoora = $row;
-                    $myMooraRank = $idx + 1;
+                    $myMooraRank = (int) ($row['rank'] ?? ($idx + 1));
                     $myEligible = true;
                     break;
                 }
@@ -97,7 +97,7 @@ class Siswa extends BaseController
             foreach ($hasilAras as $idx => $row) {
                 if ((int) $row['id_alternatif'] === $myId) {
                     $myAras = $row;
-                    $myArasRank = $idx + 1;
+                    $myArasRank = (int) ($row['rank'] ?? ($idx + 1));
                     $myEligible = true;
                     break;
                 }
@@ -110,20 +110,20 @@ class Siswa extends BaseController
         $kelasMyArasRank = null;
         if ($myEligible) {
             $kelas = (string) ($myAlt['kelas'] ?? '');
-            $kelasMoora = array_values(array_filter($hasilMoora, static fn($r) => (string) ($r['kelas'] ?? '') === $kelas));
-            $kelasAras = array_values(array_filter($hasilAras, static fn($r) => (string) ($r['kelas'] ?? '') === $kelas));
+            $kelasMoora = $this->assignCompetitionRanks(array_values(array_filter($hasilMoora, static fn($r) => (string) ($r['kelas'] ?? '') === $kelas)));
+            $kelasAras = $this->assignCompetitionRanks(array_values(array_filter($hasilAras, static fn($r) => (string) ($r['kelas'] ?? '') === $kelas)));
             $kelasTopMoora = array_slice($kelasMoora, 0, 10);
             $kelasTopAras = array_slice($kelasAras, 0, 10);
 
             foreach ($kelasMoora as $idx => $r) {
                 if ((int) $r['id_alternatif'] === (int) $myAlt['id_alternatif']) {
-                    $kelasMyMooraRank = $idx + 1;
+                    $kelasMyMooraRank = (int) ($r['rank'] ?? ($idx + 1));
                     break;
                 }
             }
             foreach ($kelasAras as $idx => $r) {
                 if ((int) $r['id_alternatif'] === (int) $myAlt['id_alternatif']) {
-                    $kelasMyArasRank = $idx + 1;
+                    $kelasMyArasRank = (int) ($r['rank'] ?? ($idx + 1));
                     break;
                 }
             }
@@ -363,14 +363,14 @@ class Siswa extends BaseController
         $arasVal = 0.0;
         foreach ($hasilMooraSim as $i => $r) {
             if ((int) $r['id_alternatif'] === $idAlt) {
-                $mooraRank = $i + 1;
+                $mooraRank = (int) ($r['rank'] ?? ($i + 1));
                 $mooraVal = (float) $r['nilai'];
                 break;
             }
         }
         foreach ($hasilArasSim as $i => $r) {
             if ((int) $r['id_alternatif'] === $idAlt) {
-                $arasRank = $i + 1;
+                $arasRank = (int) ($r['rank'] ?? ($i + 1));
                 $arasVal = (float) $r['nilai'];
                 break;
             }
@@ -481,8 +481,7 @@ class Siswa extends BaseController
             ];
         }
 
-        usort($hasil, static fn($a, $b) => $b['nilai'] <=> $a['nilai']);
-        return $hasil;
+        return $this->assignCompetitionRanks($hasil);
     }
 
     private function hitungArasRingkas(array $alternatif, array $kriteria, array $matriks): array
@@ -552,7 +551,33 @@ class Siswa extends BaseController
                 'nilai' => $Ki,
             ];
         }
-        usort($hasil, static fn($a, $b) => $b['nilai'] <=> $a['nilai']);
-        return $hasil;
+        return $this->assignCompetitionRanks($hasil);
+    }
+
+    private function assignCompetitionRanks(array $rows): array
+    {
+        usort($rows, static function ($a, $b) {
+            $valueCompare = round((float) ($b['nilai'] ?? 0), 6)
+                <=> round((float) ($a['nilai'] ?? 0), 6);
+            if ($valueCompare !== 0) {
+                return $valueCompare;
+            }
+            $nameCompare = strnatcasecmp((string) ($a['nama'] ?? ''), (string) ($b['nama'] ?? ''));
+            return $nameCompare !== 0
+                ? $nameCompare
+                : strnatcasecmp((string) ($a['nis'] ?? ''), (string) ($b['nis'] ?? ''));
+        });
+
+        $previousValue = null;
+        foreach ($rows as $index => &$row) {
+            $officialValue = round((float) ($row['nilai'] ?? 0), 6);
+            if ($index === 0 || $officialValue !== $previousValue) {
+                $rank = $index + 1;
+            }
+            $row['rank'] = $rank;
+            $previousValue = $officialValue;
+        }
+        unset($row);
+        return $rows;
     }
 }

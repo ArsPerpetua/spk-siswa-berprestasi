@@ -117,16 +117,22 @@ class PeriodeRanking extends BaseController
                 $compare = $b['_nilai_lama'] <=> $a['_nilai_lama'];
                 return $compare !== 0 ? $compare : strnatcasecmp($a['nama_siswa'], $b['nama_siswa']);
             });
+            $previousValue = null;
             foreach ($students as $index => $student) {
+                $officialValue = round((float) $student['_nilai_lama'], 6);
+                if ($index === 0 || $officialValue !== $previousValue) {
+                    $rank = $index + 1;
+                }
                 $rows[] = [
                     'id_periode' => $id,
                     'id_alternatif' => (int) $student['id_alternatif'],
                     'kelas' => $class,
-                    'ranking_lama' => $index + 1,
+                    'ranking_lama' => $rank,
                     'nilai_lama' => round((float) $student['_nilai_lama'], 4),
                     'sumber' => 'generate_nilai_akademik',
                     'created_at' => $now,
                 ];
+                $previousValue = $officialValue;
             }
         }
 

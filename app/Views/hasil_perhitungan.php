@@ -388,10 +388,9 @@ if (!empty($filter_query)) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php $rank = 1;
-                                foreach ($hasil_moora as $row): ?>
+                                <?php foreach ($hasil_moora as $row): ?>
                                     <tr>
-                                        <td class="fw-bold text-center h5"><?= $rank++ ?></td>
+                                        <td class="fw-bold text-center h5"><?= (int) ($row['rank'] ?? 0) ?></td>
                                         <td class="text-center"><?= $row['nis'] ?></td>
                                         <td><?= $row['nama'] ?></td>
                                         <td class="text-center text-success"><?= number_format($row['max'], 4) ?></td>
@@ -635,10 +634,9 @@ if (!empty($filter_query)) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php $rank = 1;
-                                foreach ($hasil_aras as $row): ?>
+                                <?php foreach ($hasil_aras as $row): ?>
                                     <tr>
-                                        <td class="fw-bold text-center h5"><?= $rank++ ?></td>
+                                        <td class="fw-bold text-center h5"><?= (int) ($row['rank'] ?? 0) ?></td>
                                         <td class="text-center"><?= $row['nis'] ?></td>
                                         <td><?= $row['nama'] ?></td>
                                         <td class="text-center"><?= number_format($row['Si'], 4) ?></td>
@@ -773,6 +771,10 @@ if (!empty($filter_query)) {
                     <?php
                     $top_moora = $hasil_moora[0] ?? null;
                     $top_aras = $hasil_aras[0] ?? null;
+                    $juara_moora = array_values(array_filter($hasil_moora, static fn($row) => (int) ($row['rank'] ?? 0) === 1));
+                    $juara_aras = array_values(array_filter($hasil_aras, static fn($row) => (int) ($row['rank'] ?? 0) === 1));
+                    $nis_juara_aras = array_column($juara_aras, 'nis');
+                    $juara_bersama = array_values(array_filter($juara_moora, static fn($row) => in_array($row['nis'], $nis_juara_aras, true)));
                     ?>
 
                     <!-- KESIMPULAN AKHIR (UNTUK ORANG AWAM) -->
@@ -793,16 +795,20 @@ if (!empty($filter_query)) {
                                     </p>
                                     <div class="alert alert-white border shadow-sm">
                                         <?php if ($top_moora && $top_aras): ?>
-                                            <?php if ($top_moora['nis'] == $top_aras['nis']): ?>
-                                                <h4 class="fw-bold text-success mb-1"><i class="bi bi-trophy-fill text-warning"></i>
-                                                    <?= $top_moora['nama'] ?> (NIS: <?= $top_moora['nis'] ?>)</h4>
-                                                <small class="text-muted">Siswa ini menempati <strong>Peringkat 1</strong> di kedua
-                                                    metode perhitungan. Hasil sangat kuat dan konsisten.</small>
+                                            <?php if ($juara_bersama): ?>
+                                                <h5 class="fw-bold text-success mb-1"><i class="bi bi-trophy-fill text-warning"></i>
+                                                    Peringkat 1 pada kedua metode:</h5>
+                                                <ul class="mb-1">
+                                                    <?php foreach ($juara_bersama as $juara): ?>
+                                                        <li><strong><?= esc($juara['nama']) ?></strong> (NIS: <?= esc($juara['nis']) ?>)</li>
+                                                    <?php endforeach; ?>
+                                                </ul>
+                                                <small class="text-muted">Jika lebih dari satu siswa tercantum, mereka memperoleh peringkat 1 bersama.</small>
                                             <?php else: ?>
                                                 <h5 class="fw-bold text-dark mb-1">Terdapat Perbedaan Rekomendasi Utama:</h5>
                                                 <ul class="mb-0">
-                                                    <li>Metode MOORA menyarankan: <strong><?= $top_moora['nama'] ?></strong></li>
-                                                    <li>Metode ARAS menyarankan: <strong><?= $top_aras['nama'] ?></strong></li>
+                                                    <li>MOORA: <strong><?= esc(implode(', ', array_column($juara_moora, 'nama'))) ?></strong></li>
+                                                    <li>ARAS: <strong><?= esc(implode(', ', array_column($juara_aras, 'nama'))) ?></strong></li>
                                                 </ul>
                                                 <small class="text-muted">Silakan lihat detail nilai di bawah untuk pertimbangan
                                                     lebih lanjut.</small>
@@ -869,20 +875,18 @@ if (!empty($filter_query)) {
                             <tbody>
                                 <?php
                                 $data_komparasi = [];
-                                $rank = 1;
                                 foreach ($hasil_moora as $m) {
                                     $data_komparasi[$m['nis']] = [
                                         'nama' => $m['nama'],
                                         'moora_val' => $m['nilai'],
-                                        'moora_rank' => $rank++
+                                        'moora_rank' => (int) ($m['rank'] ?? 0)
                                     ];
                                 }
 
-                                $rank = 1;
                                 foreach ($hasil_aras as $a) {
                                     if (isset($data_komparasi[$a['nis']])) {
                                         $data_komparasi[$a['nis']]['aras_val'] = $a['nilai'];
-                                        $data_komparasi[$a['nis']]['aras_rank'] = $rank++;
+                                        $data_komparasi[$a['nis']]['aras_rank'] = (int) ($a['rank'] ?? 0);
                                     }
                                 }
 

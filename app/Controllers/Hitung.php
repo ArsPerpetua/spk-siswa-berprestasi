@@ -165,9 +165,7 @@ class Hitung extends BaseController
                 'nilai' => $total_benefit - $total_cost
             ];
         }
-        usort($hasil_moora, function ($a, $b) {
-            return $b['nilai'] <=> $a['nilai'];
-        });
+        $hasil_moora = $this->assignCompetitionRanks($hasil_moora);
         $data['hasil_moora'] = $hasil_moora;
 
 
@@ -279,9 +277,7 @@ class Hitung extends BaseController
                 'predikat' => $predikat
             ];
         }
-        usort($hasil_aras, function ($a, $b) {
-            return $b['nilai'] <=> $a['nilai'];
-        });
+        $hasil_aras = $this->assignCompetitionRanks($hasil_aras);
         $data['hasil_aras'] = $hasil_aras;
 
         // ==========================================
@@ -475,9 +471,7 @@ class Hitung extends BaseController
             ];
         }
         // Sort Ranking MOORA
-        usort($hasil_moora, function ($a, $b) {
-            return $b['nilai'] <=> $a['nilai'];
-        });
+        $hasil_moora = $this->assignCompetitionRanks($hasil_moora);
         $data['hasil_moora'] = $hasil_moora;
 
 
@@ -576,9 +570,7 @@ class Hitung extends BaseController
             ];
         }
         // Sort Ranking ARAS
-        usort($hasil_aras, function ($a, $b) {
-            return $b['Ki'] <=> $a['Ki'];
-        });
+        $hasil_aras = $this->assignCompetitionRanks($hasil_aras, 'Ki');
         $data['hasil_aras'] = $hasil_aras;
         $data['S0'] = $S0;
 
@@ -718,10 +710,7 @@ class Hitung extends BaseController
         }
 
         // Sort Ranking (Besar ke Kecil)
-        usort($nilai_yi, function ($a, $b) {
-            return $b['nilai'] <=> $a['nilai'];
-        });
-        return $nilai_yi;
+        return $this->assignCompetitionRanks($nilai_yi);
     }
 
     // --- RUMUS ARAS ---
@@ -810,10 +799,35 @@ class Hitung extends BaseController
         }
 
         // Sort Ranking (Besar ke Kecil)
-        usort($nilai_Si, function ($a, $b) {
-            return $b['nilai'] <=> $a['nilai'];
+        return $this->assignCompetitionRanks($nilai_Si);
+    }
+
+    /** Berikan competition rank (1, 1, 3) berdasarkan nilai resmi 6 desimal. */
+    private function assignCompetitionRanks(array $rows, string $valueKey = 'nilai'): array
+    {
+        usort($rows, static function ($a, $b) use ($valueKey) {
+            $valueCompare = round((float) ($b[$valueKey] ?? 0), 6)
+                <=> round((float) ($a[$valueKey] ?? 0), 6);
+            if ($valueCompare !== 0) {
+                return $valueCompare;
+            }
+            $nameCompare = strnatcasecmp((string) ($a['nama'] ?? ''), (string) ($b['nama'] ?? ''));
+            return $nameCompare !== 0
+                ? $nameCompare
+                : strnatcasecmp((string) ($a['nis'] ?? ''), (string) ($b['nis'] ?? ''));
         });
-        return $nilai_Si;
+
+        $previousValue = null;
+        foreach ($rows as $index => &$row) {
+            $officialValue = round((float) ($row[$valueKey] ?? 0), 6);
+            if ($index === 0 || $officialValue !== $previousValue) {
+                $rank = $index + 1;
+            }
+            $row['rank'] = $rank;
+            $previousValue = $officialValue;
+        }
+        unset($row);
+        return $rows;
     }
 
     private function getFilterInput(): array
